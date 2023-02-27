@@ -1,6 +1,8 @@
 // Copyright 2023, Brian Swetland <swetland@frotz.net>
 // Licensed under the Apache License, Version 2.0.
 
+// see: https://arm-software.github.io/CMSIS_5/DAP/html/index.html
+
 #pragma once
 
 #define DAP_Info 0x00 // BYTE(DI_*)
@@ -94,25 +96,25 @@
 // wait retry - max number of retries after WAIT response
 // match retry - max number of retries on reads w/ value match
 
-#define DAP_Transfer 0x05
+#define DAP_Transfer      0x05
 // BYTE(Index) BYTE(Count) followed by Count instances of
 // BYTE(XferReq) WORD(Value) WORD(MatchMask) WORD(ValueMatch)
-#define XFER_DebugPort  0x00
-#define XFER_AccessPort 0x01
-#define XFER_Write      0x00
-#define XFER_Read       0x02
-#define XFER_Addr_00    0x00
-#define XFER_Addr_04    0x04
-#define XFER_Addr_08    0x08
-#define XFER_Addr_0C    0x0C
-#define XFER_ValueMatch 0x10
-#define XFER_MatchMask  0x20
-#define XFER_TimeStamp  0x80
+#define XFER_DP           0x00
+#define XFER_AP           0x01
+#define XFER_WR           0x00
+#define XFER_RD           0x02
+#define XFER_00           0x00
+#define XFER_04           0x04
+#define XFER_08           0x08
+#define XFER_0C           0x0C
+#define XFER_ValueMatch   0x10
+#define XFER_MatchMask    0x20
+#define XFER_TimeStamp    0x80
 
-#define RSP_ACK_MASK 0x07
-#define RSP_ACK_OK   0x01
-#define RSP_ACK_WAIT 0x02
-#define RSP_ACK_FAULT 0x04
+#define RSP_ACK_MASK      0x07
+#define RSP_ACK_OK        0x01
+#define RSP_ACK_WAIT      0x02
+#define RSP_ACK_FAULT     0x04
 #define RSP_ProtocolError 0x08
 #define RSP_ValueMismatch 0x10
 // Reponse BYTE(Count) BYTE(Response) WORD(TimeStamp)? WORD(Data)*

@@ -1,6 +1,10 @@
 // Copyright 2023, Brian Swetland <swetland@frotz.net>
 // Licensed under the Apache License, Version 2.0.
 
+// see: ARM IHI 0031G
+//      Arm Debug Interface Architecture Specification
+//      ADIv5.0 to ADIv5.2
+
 #pragma once
 
 // high nybble is banksel
@@ -9,7 +13,7 @@
 #define DP_CS                     0x04 // RW    CTRL/STAT
 #define DP_DLCR                   0x14 // RW    Data Link Control
 #define DP_TARGETID               0x24 // RO v2
-#define DP_DLPIDR                 0x34 // RO v2 Data Link ID
+#define DP_DLPIDR                 0x34 // RO v2 Data Link Protocol ID
 #define DP_EVENTSTAT              0x44 // RO v2
 #define DP_SELECT                 0x08 // WO
 #define DP_RESEND                 0x08 // RO v2 Return last AP or RDBUFF read data
@@ -33,8 +37,8 @@
 #define DP_CS_STICKYERR           0x00000020U // RO/WI error occurred in AP txn
 #define DP_CS_READOK              0x00000040U // RO/WI last AP or RDBUFF RD was OK
 #define DP_CS_WDATAERR            0x00000080U // RO/WI
-#define DP_CS_MASKLANE(n)         (((n) & 0xF) << 8) // RW
-#define DP_CS_TRNCNT(n)           (((n) & 0xFFF) << 12)
+#define DP_CS_MASKLANE(n)         (((n) & 0xFU) << 8) // RW
+#define DP_CS_TRNCNT(n)           (((n) & 0xFFFU) << 12)
 #define DP_CS_CDBGRSTREQ          0x04000000U // RW or RAZ/WI
 #define DP_CS_CDBGRSTACK          0x08000000U // RO
 #define DP_CS_CDBGPWRUPREQ        0x10000000U // RW
@@ -51,7 +55,7 @@
 
 #define DP_EVENTSTAT_EA           0x000000001U
 
-#define DP_SELECT_DPBANK(n)       ((n) & 0xF)
-#define DP_SELECT_APBANK(n)       (((n) & 0xF) << 4)
-#define DP_SELECT_AP(n)           (((n) & 0xFF) << 24)
+#define DP_SELECT_DPBANK(n)       ((n) & 0xFU)
+#define DP_SELECT_APBANK(n)       (((n) & 0xFU) << 4)
+#define DP_SELECT_AP(n)           (((n) & 0xFFU) << 24)
 

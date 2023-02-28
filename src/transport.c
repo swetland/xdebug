@@ -139,6 +139,11 @@ static void dc_q_clear(DC* dc) {
 	dc->txbuf[2] = 0; // Count 0 initially
 }
 
+void dc_q_init(DC* dc) {
+	// TODO: handle error cleanup, re-attach, etc
+	dc_q_clear(dc);
+}
+
 int dc_q_exec(DC* dc) {
 	// fprintf(stderr, "Q EXEC\n");
 	// if we're already in error, don't generate more usb traffic
@@ -294,18 +299,22 @@ void dc_q_ap_wr(DC* dc, unsigned apaddr, uint32_t val) {
 
 // convenience wrappers for single reads and writes
 int dc_dp_rd(DC* dc, unsigned dpaddr, uint32_t* val) {
+	dc_q_init(dc);
 	dc_q_dp_rd(dc, dpaddr, val);
 	return dc_q_exec(dc);
 }
 int dc_dp_wr(DC* dc, unsigned dpaddr, uint32_t val) {
+	dc_q_init(dc);
 	dc_q_dp_wr(dc, dpaddr, val);
 	return dc_q_exec(dc);
 }
 int dc_ap_rd(DC* dc, unsigned apaddr, uint32_t* val) {
+	dc_q_init(dc);
 	dc_q_ap_rd(dc, apaddr, val);
 	return dc_q_exec(dc);
 }
 int dc_ap_wr(DC* dc, unsigned apaddr, uint32_t val) {
+	dc_q_init(dc);
 	dc_q_ap_wr(dc, apaddr, val);
 	return dc_q_exec(dc);
 }

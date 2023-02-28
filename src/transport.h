@@ -17,6 +17,9 @@ void dc_q_dp_wr(dctx_t* dc, unsigned dpaddr, uint32_t val);
 void dc_q_ap_rd(dctx_t* dc, unsigned apaddr, uint32_t* val); 
 void dc_q_ap_wr(dctx_t* dc, unsigned apaddr, uint32_t val);
 
+// prepare for a set of transactions
+void dc_q_init(dctx_t* dc);
+
 // execute any outstanding transactions, return final status
 int dc_q_exec(dctx_t* dc);
 

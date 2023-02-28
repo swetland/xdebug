@@ -319,20 +319,62 @@ int dc_ap_wr(DC* dc, unsigned apaddr, uint32_t val) {
 	return dc_q_exec(dc);
 }
 
-int dc_attach(DC* dc) {
-	uint8_t io[23] = { DAP_SWD_Sequence, 3,
-		0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 64 1s
-		0x10, 0x9E, 0xE7, // JTAG to SWD magic sequence
-		0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, // 60 1s, 4 0s
-	};
-	if (dap_cmd(dc, io, 23, io, 2) < 0) {
-		return -1;
+// SWD Attach Sequence:
+// 1. Send >50 1s and then the JTAG to SWD escape code
+//    (in case this is a JTAG-SWD DAP in JTAG mode)
+// 2. Send >8 1s and then the Selection Alert Sequence
+//    and then the SWD Activation Code
+//    (in case this is a SWD v2 DAP in Dormant State)
+// 3. Send >50 1s and then 4 0s -- the Line Reset Sequence
+// 4. If multidrop, issue a write to DP.TARGETSEL, but
+//    ignore the ACK response
+// 5. Issue a read from DP.IDR
+
+static uint8_t attach_cmd[54] = {
+	DAP_SWD_Sequence, 5,
+
+	//    [--- 64 1s ----------------------------------]
+	0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	//    [JTAG2SWD]  [- 16 1s ]  [---------------------
+	0x00, 0x9E, 0xE7, 0xFF, 0xFF, 0x92, 0xF3, 0x09, 0x62,
+	//    ----- Selection Alert Sequence ---------------
+	0x00, 0x95, 0x2D, 0x85, 0x86, 0xE9, 0xAF, 0xDD, 0xE3,
+        //    ---------------------]  [Act Code]  [---------
+	0x00, 0xA2, 0x0E, 0xBC, 0x19, 0xA0, 0xF1, 0xFF, 0xFF,
+	//    ----- Line Reset Sequence -------]
+	0x30, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F,
+
+	//    WR DP TARGETSEL
+	0x08, 0x99,
+	//    5 bits idle
+	0x85,
+	//    WR VALUE:32, PARTY:1, ZEROs:7
+	0x28, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
+int dc_attach(DC* dc, unsigned flags, uint32_t tgt, uint32_t* idcode) {
+	uint8_t rsp[3];
+
+	if (flags & DC_MULTIDROP) {
+		// Copy and patch the attach sequence to include
+		// the DP.TARGETSEL write and insert the target
+		// id and parity
+		uint8_t cmd[54];
+		memcpy(cmd, attach_cmd, 54);
+		cmd[1] = 8;
+		memcpy(cmd + 49, &tgt, sizeof(tgt));
+		cmd[53] = __builtin_parity(tgt);
+		dap_cmd(dc, cmd, 54, rsp, 3);
+	} else {
+		// use the common part of the attach sequence, as-is
+		dap_cmd(dc, attach_cmd, 45, rsp, 2);
 	}
-	if (io[1] != 0) {
-		ERROR("dc_attach() failure 0x%02x\n", io[1]);
-		return -1;
-	}
-	return 0;
+
+	// Issue a bare DP.IDR read, as required after a line reset
+	// or line reset + target select
+	dc_q_init(dc);
+	dc_q_raw_rd(dc, XFER_DP | XFER_RD | XFER_00, idcode);
+	return dc_q_exec(dc);
 }
 
 static usb_handle* usb_connect(void) {

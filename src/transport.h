@@ -33,5 +33,6 @@ int dc_ap_wr(dctx_t* dc, unsigned apaddr, uint32_t val);
 int dc_create(dctx_t** dc);
 
 // attempt to attach to the debug target
-int dc_attach(dctx_t* dc);
+int dc_attach(dctx_t* dc, unsigned flags, uint32_t tgt, uint32_t* idcode);
 
+#define DC_MULTIDROP 1

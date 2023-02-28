@@ -11,9 +11,18 @@
 #include "cmsis-dap-protocol.h"
 #include "transport.h"
 
+#define TRACE(fmt...) fprintf(stderr, fmt)
+//#define TRACE(fmt...) do {} while (0)
+#define ERROR(fmt...) fprintf(stderr, fmt)
+
+#define DC_ATTACHED 0 // attached and ready to do txns
+#define DC_FAILURE  1 // last txn failed, need to re-attach
+#define DC_DETACHED 2 // have not yet attached
+#define DC_OFFLINE  3 // usb connection not available
+
 struct debug_context {
 	usb_handle* usb;
-	unsigned connected;
+	unsigned status;
 
 	// dap protocol info
 	uint32_t max_packet_count;
@@ -59,33 +68,32 @@ int dap_get_info(DC* dc, unsigned di, void *out, unsigned minlen, unsigned maxle
 
 void dump(const char* str, const void* ptr, unsigned len) {
 	const uint8_t* x = ptr;
-	fprintf(stderr, "%s", str);
+	TRACE("%s", str);
 	while (len > 0) {
-		fprintf(stderr, " %02x", *x++);
+		TRACE(" %02x", *x++);
 		len--;
 	}
-	fprintf(stderr, "\n");
+	TRACE("\n");
 }
 
 int dap_cmd(DC* dc, const void* tx, unsigned txlen, void* rx, unsigned rxlen) {
 	uint8_t cmd = ((const uint8_t*) tx)[0];
 	dump("TX>", tx, txlen);
 	if (usb_write(dc->usb, tx, txlen) != txlen) {
-		fprintf(stderr, "dap_cmd(0x%02x): usb write error\n", cmd);
+		ERROR("dap_cmd(0x%02x): usb write error\n", cmd);
 		return -1;
 	}
 	int sz = usb_read(dc->usb, rx, rxlen);
 	if (sz < 1) {
-		fprintf(stderr, "dap_cmd(0x%02x): usb read error\n", cmd);
+		ERROR("dap_cmd(0x%02x): usb read error\n", cmd);
 		return -1;
 	}
 	dump("RX>", rx, rxlen);
 	if (((uint8_t*) rx)[0] != cmd) {
-		fprintf(stderr, "dap_cmd(0x%02x): unsupported (0x%02x)\n",
+		ERROR("dap_cmd(0x%02x): unsupported (0x%02x)\n",
 			cmd, ((uint8_t*) rx)[0]);
 		return -1;
 	}
-	// fprintf(stderr, "dap_cmd(0x%02x): sz %u\n", cmd, sz);
 	return sz;
 }
 
@@ -95,7 +103,7 @@ int dap_cmd_std(DC* dc, const char* name, uint8_t* io,
 		return -1;
 	}
 	if (io[1] != 0) {
-		fprintf(stderr, "%s status 0x%02x\n", name, io[1]);
+		ERROR("%s status 0x%02x\n", name, io[1]);
 		return -1;
 	}
 	return 0;
@@ -124,6 +132,7 @@ static void dc_q_clear(DC* dc) {
 	dc->txavail = dc->max_packet_size - 3;
 	dc->rxavail = dc->max_packet_size - 3;
 	dc->qerror = 0;
+	// TODO: less conservative mode: don't always invalidate
 	dc->dp_select_cache = 0xFFFFFFFFU;
 	dc->txbuf[0] = DAP_Transfer;
 	dc->txbuf[1] = 0; // Index 0 for SWD
@@ -144,7 +153,7 @@ int dc_q_exec(DC* dc) {
 	int sz = dc->txnext - dc->txbuf;
 	dump("TX>", dc->txbuf, sz);
 	if (usb_write(dc->usb, dc->txbuf, sz) != sz) {
-		fprintf(stderr, "dc_q_exec() usb write error\n");
+		ERROR("dc_q_exec() usb write error\n");
 		return -1;
 	}
 	sz = 3 + (dc->rxnext - dc->rxptr) * 4;
@@ -152,16 +161,16 @@ int dc_q_exec(DC* dc) {
 	memset(rxbuf, 0xEE, 1024); // DEBUG
 	int n = usb_read(dc->usb, rxbuf, sz);
 	if (n < 0) {
-		fprintf(stderr, "dc_q_exec() usb read error\n");
+		ERROR("dc_q_exec() usb read error\n");
 		return -1;
 	}
 	dump("RX>", rxbuf, sz);
 	if ((n < 3) || (rxbuf[0] != DAP_Transfer)) {
-		fprintf(stderr, "dc_q_exec() bad response\n");
+		ERROR("dc_q_exec() bad response\n");
 		return -1;
 	}
 	if (rxbuf[2] != RSP_ACK_OK) {
-		fprintf(stderr, "dc_q_exec() error response 0x%02x\n", rxbuf[2]);
+		ERROR("dc_q_exec() error response 0x%02x\n", rxbuf[2]);
 		return -1;
 	}
 
@@ -199,7 +208,7 @@ static void dc_q_raw_rd(DC* dc, unsigned req, uint32_t* val) {
 }
 
 static void dc_q_raw_wr(DC* dc, unsigned req, uint32_t val) {
-	// fprintf(stderr, "Q RAW WR %08x %08x\n", req, val);
+	// TRACE("Q RAW WR %08x %08x\n", req, val);
 	if (dc->txavail < 5) {
 		if (dc_q_exec(dc) < 0) {
 			dc->qerror = 1;
@@ -215,7 +224,7 @@ static void dc_q_raw_wr(DC* dc, unsigned req, uint32_t val) {
 
 // adjust DP.SELECT for desired DP access, if necessary
 void dc_q_dp_sel(DC* dc, uint32_t dpaddr) {
-	// fprintf(stderr, "DP SEL %08x (select is %08x)\n", dpaddr, dc->dp_select_cache);
+	// TRACE("DP SEL %08x (select is %08x)\n", dpaddr, dc->dp_select_cache);
 	// DP address is BANK:4 REG:4
 	if (dpaddr & 0xFFFFFF03U) {
 		fprintf(stderr, "invalid DP addr 0x%08x\n", dpaddr);
@@ -240,7 +249,7 @@ void dc_q_dp_sel(DC* dc, uint32_t dpaddr) {
 void dc_q_ap_sel(DC* dc, uint32_t apaddr) {
 	// AP address is AP:8 BANK:4 REG:4
 	if (apaddr & 0xFFFF0003U) {
-		fprintf(stderr, "invalid DP addr 0x%08x\n", apaddr);
+		ERROR("invalid DP addr 0x%08x\n", apaddr);
 		dc->qerror = 1;
 		return;
 	}
@@ -311,7 +320,7 @@ int dc_attach(DC* dc) {
 		return -1;
 	}
 	if (io[1] != 0) {
-		fprintf(stderr, "dc_attach() failure 0x%02x\n", io[1]);
+		ERROR("dc_attach() failure 0x%02x\n", io[1]);
 		return -1;
 	}
 	return 0;
@@ -397,6 +406,9 @@ int dc_create(DC** out) {
 		free(dc);
 		return -1;
 	}
+
+	// invalidate register cache
+	dc->dp_select_cache = 0xFFFFFFFFU;
 
 	// clip to our buffer size
 	if (dc->max_packet_size > 1024) {

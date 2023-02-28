@@ -59,3 +59,46 @@
 #define DP_SELECT_APBANK(n)       (((n) & 0xFU) << 4)
 #define DP_SELECT_AP(n)           (((n) & 0xFFU) << 24)
 
+// Memory AP
+
+#define MAP_CSW    0x00 // RW Control/Status Word
+#define MAP_TAR    0x04 // RW Transfer Address Reg
+#define MAP_TAR_H  0x08 // RW Transfer Address Reg (HI)
+#define MAP_DRW    0x0C // RW Data Read/Write
+#define MAP_BD0    0x10 // RW Banked Data Reg 0
+#define MAP_BD1    0x14
+#define MAP_BD2    0x18
+#define MAP_BD3    0x1C
+#define MAP_MBT    0x20 // ?? Memory Barrier Transfer
+#define MAP_T0TR   0x30 // RW Tag 0 Transfer Reg
+#define MAP_CFG1   0xE0 // RO Config Register 1
+#define MAP_BASE_H 0xF0 // RO Debug Base Addr (HI)
+#define MAP_CFG    0xF4 // RO Config Register 0
+#define MAP_BASE   0xF8 // RO Debug Base Addr
+#define MAP_IDR    0xFC // RO Identification Reg
+
+#define MAP_CFG_LD  0x04 // Large Data Extension (>32bit)
+#define MAP_CFG_LA  0x02 // Large Addr Extension (>32bit)
+#define MAP_CFG_BE  0x01 // Big Endian (obsolete in 5.2)
+
+#define MAP_CSW_SZ_MASK         0x00000007U
+#define MAP_CSW_SZ_8            0x00000000U
+#define MAP_CSW_SZ_16           0x00000001U
+#define MAP_CSW_SZ_32           0x00000002U // always supported
+#define MAP_CSW_SZ_64           0x00000003U
+#define MAP_CSW_SZ_128          0x00000004U
+#define MAP_CSW_SZ_256          0x00000005U
+#define MAP_CSW_INC_MASK        0x00000030U
+#define MAP_CSW_INC_OFF         0x00000000U
+#define MAP_CSW_INC_SINGLE      0x00000010U
+#define MAP_CSW_INC_PACKED      0x00000020U
+#define MAP_CSW_DEVICE_EN       0x00000040U // Enable MEM AP
+#define MAP_CSW_BUSY            0x00000080U // Transfer In Progress
+#define MAP_CSW_MODE_MASK       0x00000F00U
+#define MAP_CSW_MODE_BASIC      0x00000000U
+#define MAP_CSW_MODE_BARRIER    0x00000100U
+#define MAP_CSW_TYPE_MASK       0x00007000U
+#define MAP_CSW_MTE             0x00008000U
+#define MAP_CSW_SEC_DBG_EN      0x00800000U // Secure Debug Enable
+#define MAP_CSW_PROT_MASK       0x7F000000U
+#define MAP_CSW_DBG_SW_EN       0x80000000U // Debug SW Access Enable

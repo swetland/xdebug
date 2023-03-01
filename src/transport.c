@@ -11,9 +11,29 @@
 #include "cmsis-dap-protocol.h"
 #include "transport.h"
 
+#define WITH_TRACE 0
+
+#if WITH_TRACE
 #define TRACE(fmt...) fprintf(stderr, fmt)
-//#define TRACE(fmt...) do {} while (0)
+#else
+#define TRACE(fmt...) do {} while (0)
+#endif
+
 #define ERROR(fmt...) fprintf(stderr, fmt)
+
+#if WITH_TRACE
+static void dump(const char* str, const void* ptr, unsigned len) {
+	const uint8_t* x = ptr;
+	TRACE("%s", str);
+	while (len > 0) {
+		TRACE(" %02x", *x++);
+		len--;
+	}
+	TRACE("\n");
+}
+#else
+#define dump(...) do {} while (0)
+#endif
 
 #define DC_ATTACHED 0 // attached and ready to do txns
 #define DC_FAILURE  1 // last txn failed, need to re-attach
@@ -64,16 +84,6 @@ int dap_get_info(DC* dc, unsigned di, void *out, unsigned minlen, unsigned maxle
 	}
 	memcpy(out, buf + 2, buf[1]);
 	return buf[1];
-}
-
-void dump(const char* str, const void* ptr, unsigned len) {
-	const uint8_t* x = ptr;
-	TRACE("%s", str);
-	while (len > 0) {
-		TRACE(" %02x", *x++);
-		len--;
-	}
-	TRACE("\n");
 }
 
 int dap_cmd(DC* dc, const void* tx, unsigned txlen, void* rx, unsigned rxlen) {

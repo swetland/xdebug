@@ -1,9 +1,12 @@
 // if s1 starts with s2 returns true, else false
 // len is the length of s1
 // s2 should be null-terminated
-static bool starts_with(const char *s1, int len, const char *s2)
+static bool starts_with(const void *_s1, int len, const void *_s2)
 {
+	const uint8_t *s1 = _s1;
+	const uint8_t *s2 = _s2;
 	int n = 0;
+
 	while (*s2 && n < len) {
 		if (*s1++ != *s2++)
 			return false;
@@ -12,7 +15,7 @@ static bool starts_with(const char *s1, int len, const char *s2)
 	return *s2 == 0;
 }
 
-static int parse_mouse_event(struct tb_event *event, const char *buf, int len) {
+static int parse_mouse_event(struct tb_event *event, uint8_t *buf, int len) {
 	if (len >= 6 && starts_with(buf, len, "\033[M")) {
 		// X10 mouse encoding, the simplest one
 		// \033 [ M Cb Cx Cy
@@ -87,9 +90,9 @@ static int parse_mouse_event(struct tb_event *event, const char *buf, int len) {
 		if (s1 == -1 || s2 == -1 || s1 == s2)
 			return 0;
 
-		n1 = strtoul(&buf[starti], NULL, 10);
-		n2 = strtoul(&buf[s1 + 1], NULL, 10);
-		n3 = strtoul(&buf[s2 + 1], NULL, 10);
+		n1 = strtoul((void*) &buf[starti], NULL, 10);
+		n2 = strtoul((void*) &buf[s1 + 1], NULL, 10);
+		n3 = strtoul((void*) &buf[s2 + 1], NULL, 10);
 		
 		if (isU)
 			n1 -= 32;
@@ -138,7 +141,7 @@ static int parse_mouse_event(struct tb_event *event, const char *buf, int len) {
 }
 
 // convert escape sequence to event, and return consumed bytes on success (failure == 0)
-static int parse_escape_seq(struct tb_event *event, const char *buf, int len)
+static int parse_escape_seq(struct tb_event *event, uint8_t *buf, int len)
 {
 	int mouse_parsed = parse_mouse_event(event, buf, len);
 
@@ -160,7 +163,7 @@ static int parse_escape_seq(struct tb_event *event, const char *buf, int len)
 
 static bool extract_event(struct tb_event *event, struct bytebuffer *inbuf, int inputmode)
 {
-	const char *buf = inbuf->buf;
+	uint8_t *buf = inbuf->buf;
 	const int len = inbuf->len;
 	if (len == 0)
 		return false;
@@ -200,25 +203,30 @@ static bool extract_event(struct tb_event *event, struct bytebuffer *inbuf, int 
 	// if we're here, this is not an escape sequence and not an alt sequence
 	// so, it's a FUNCTIONAL KEY or a UNICODE character
 
+	uint8_t buf0 = buf[0];
+
 	// first of all check if it's a functional key
-	if ((unsigned char)buf[0] <= TB_KEY_SPACE ||
-	    (unsigned char)buf[0] == TB_KEY_BACKSPACE2)
+	if (buf0 <= TB_KEY_SPACE ||
+	    buf0 == TB_KEY_BACKSPACE2)
 	{
-		// fill event, pop buffer, return success */
-		event->ch = 0;
-		event->key = (uint16_t)buf[0];
-		bytebuffer_truncate(inbuf, 1);
-		return true;
+		if (buf0 != TB_KEY_SPACE ||
+		    !(inputmode&TB_INPUT_SPACE)) {
+			// fill event, pop buffer, return success */
+			event->ch = 0;
+			event->key = buf0;
+			bytebuffer_truncate(inbuf, 1);
+			return true;
+		}
 	}
 
 	// feh... we got utf8 here
 
 	// check if there is all bytes
-	if (len >= tb_utf8_char_length(buf[0])) {
+	if (len >= tb_utf8_char_length(buf0)) {
 		/* everything ok, fill event, pop buffer, return success */
 		tb_utf8_char_to_unicode(&event->ch, buf);
 		event->key = 0;
-		bytebuffer_truncate(inbuf, tb_utf8_char_length(buf[0]));
+		bytebuffer_truncate(inbuf, tb_utf8_char_length(buf0));
 		return true;
 	}
 

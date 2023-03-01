@@ -1,5 +1,5 @@
 struct bytebuffer {
-	char *buf;
+	uint8_t *buf;
 	int len;
 	int cap;
 };
@@ -14,7 +14,7 @@ static void bytebuffer_reserve(struct bytebuffer *b, int cap) {
 		cap = b->cap * 2;
 	}
 
-	char *newbuf = realloc(b->buf, cap);
+	uint8_t *newbuf = realloc(b->buf, cap);
 	b->buf = newbuf;
 	b->cap = cap;
 }

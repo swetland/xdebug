@@ -228,10 +228,11 @@ SO_IMPORT void tb_blit(int x, int y, int w, int h, const struct tb_cell *cells);
  */
 SO_IMPORT struct tb_cell *tb_cell_buffer(void);
 
-#define TB_INPUT_CURRENT 0 /* 000 */
-#define TB_INPUT_ESC     1 /* 001 */
-#define TB_INPUT_ALT     2 /* 010 */
-#define TB_INPUT_MOUSE   4 /* 100 */
+#define TB_INPUT_CURRENT 0 /* 0000 */
+#define TB_INPUT_ESC     1 /* 0001 */
+#define TB_INPUT_ALT     2 /* 0010 */
+#define TB_INPUT_MOUSE   4 /* 0100 */
+#define TB_INPUT_SPACE   8 /* 1000 */
 
 /* Sets the termbox input mode. Termbox has two input modes:
  * 1. Esc input mode.
@@ -246,6 +247,9 @@ SO_IMPORT struct tb_cell *tb_cell_buffer(void);
  * were set, but the mouse mode was, TB_INPUT_ESC mode is used. If for some
  * reason you've decided to use (TB_INPUT_ESC | TB_INPUT_ALT) combination, it
  * will behave as if only TB_INPUT_ESC was selected.
+ *
+ * TB_INPUT_SPACE may be bitwise OR'd as well to treat space as a regular
+ * character rather than a special/function key.
  *
  * If 'mode' is TB_INPUT_CURRENT, it returns the current input mode.
  *
@@ -311,8 +315,8 @@ SO_IMPORT int tb_poll_event(struct tb_event *event);
 
 /* Utility utf8 functions. */
 #define TB_EOF -1
-SO_IMPORT int tb_utf8_char_length(char c);
-SO_IMPORT int tb_utf8_char_to_unicode(uint32_t *out, const char *c);
+SO_IMPORT int tb_utf8_char_length(uint8_t c);
+SO_IMPORT int tb_utf8_char_to_unicode(uint32_t *out, uint8_t *c);
 SO_IMPORT int tb_utf8_unicode_to_char(char *out, uint32_t c);
 
 #ifdef __cplusplus

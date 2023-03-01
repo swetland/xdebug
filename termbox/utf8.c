@@ -1,6 +1,6 @@
 #include "termbox.h"
 
-static const unsigned char utf8_length[256] = {
+static const uint8_t utf8_length[256] = {
   1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
   1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
   1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
@@ -11,7 +11,7 @@ static const unsigned char utf8_length[256] = {
   3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,5,5,5,5,6,6,1,1
 };
 
-static const unsigned char utf8_mask[6] = {
+static const uint8_t utf8_mask[6] = {
 	0x7F,
 	0x1F,
 	0x0F,
@@ -20,12 +20,12 @@ static const unsigned char utf8_mask[6] = {
 	0x01
 };
 
-int tb_utf8_char_length(char c)
+int tb_utf8_char_length(uint8_t c)
 {
-	return utf8_length[(unsigned char)c];
+	return utf8_length[c];
 }
 
-int tb_utf8_char_to_unicode(uint32_t *out, const char *c)
+int tb_utf8_char_to_unicode(uint32_t *out, uint8_t *c)
 {
 	if (*c == 0)
 		return TB_EOF;

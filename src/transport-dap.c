@@ -12,7 +12,7 @@
 #include "transport.h"
 #include "transport-private.h"
 
-int dap_get_info(DC* dc, unsigned di, void *out, unsigned minlen, unsigned maxlen) {
+static int dap_get_info(DC* dc, unsigned di, void *out, unsigned minlen, unsigned maxlen) {
 	uint8_t	buf[256 + 2];
 	buf[0] = DAP_Info;
 	buf[1] = di;
@@ -30,7 +30,7 @@ int dap_get_info(DC* dc, unsigned di, void *out, unsigned minlen, unsigned maxle
 	return buf[1];
 }
 
-int dap_cmd(DC* dc, const void* tx, unsigned txlen, void* rx, unsigned rxlen) {
+static int dap_cmd(DC* dc, const void* tx, unsigned txlen, void* rx, unsigned rxlen) {
 	uint8_t cmd = ((const uint8_t*) tx)[0];
 	dump("TX>", tx, txlen);
 	if (usb_write(dc->usb, tx, txlen) != txlen) {
@@ -51,8 +51,8 @@ int dap_cmd(DC* dc, const void* tx, unsigned txlen, void* rx, unsigned rxlen) {
 	return sz;
 }
 
-int dap_cmd_std(DC* dc, const char* name, uint8_t* io,
-		unsigned txlen, unsigned rxlen) {
+static int dap_cmd_std(DC* dc, const char* name, uint8_t* io,
+		       unsigned txlen, unsigned rxlen) {
 	int r = dap_cmd(dc, io, txlen, io, rxlen);
 	if (r < 0) {
 		return r;
@@ -155,7 +155,10 @@ static int dc_decode_status(unsigned n) {
 	return DC_OK;
 }
 
-int dc_q_exec(DC* dc) {
+// this internal version is called from the "public" dc_q_exec
+// as well as when we need to flush outstanding txns before
+// continuing to queue up more
+static int _dc_q_exec(DC* dc) {
 	// if we're already in error, don't generate more usb traffic
 	if (dc->qerror) {
 		int r = dc->qerror;
@@ -200,13 +203,25 @@ int dc_q_exec(DC* dc) {
 	return r;
 }
 
+// the public dc_q_exec() is called from higher layers
+int dc_q_exec(DC* dc) {
+	int r = _dc_q_exec(dc);
+	if (r == DC_ERR_SWD_FAULT) {
+		// clear all sticky errors
+		dc_dp_wr(dc, DP_ABORT, DP_ABORT_ALLCLR);
+
+	}
+	return r;
+}
+
 // internal use only -- queue raw dp reads and writes
 // these do not check req for correctness
 static void dc_q_raw_rd(DC* dc, unsigned req, uint32_t* val) {
 	if ((dc->txavail < 1) || (dc->rxavail < 4)) {
 		// exec q to make space for more work,
 		// but if there's an error, latch it
-		if ((dc->qerror = dc_q_exec(dc)) != DC_OK) {
+		// so we don't send any further txns
+		if ((dc->qerror = _dc_q_exec(dc)) != DC_OK) {
 			return;
 		}
 	}
@@ -223,7 +238,8 @@ static void dc_q_raw_wr(DC* dc, unsigned req, uint32_t val) {
 	if (dc->txavail < 5) {
 		// exec q to make space for more work,
 		// but if there's an error, latch it
-		if ((dc->qerror = dc_q_exec(dc)) != DC_OK) {
+		// so we don't send any further txns
+		if ((dc->qerror = _dc_q_exec(dc)) != DC_OK) {
 			return;
 		}
 	}
@@ -402,7 +418,7 @@ static int _dc_attach(DC* dc, unsigned flags, uint32_t tgt, uint32_t* idcode) {
 	// or line reset + target select
 	dc_q_init(dc);
 	dc_q_raw_rd(dc, XFER_DP | XFER_RD | XFER_00, idcode);
-	int r = dc_q_exec(dc);
+	int r = _dc_q_exec(dc);
 	return r;
 }
 

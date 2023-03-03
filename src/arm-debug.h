@@ -103,3 +103,5 @@
 #define MAP_CSW_SEC_DBG_EN      0x00800000U // Secure Debug Enable
 #define MAP_CSW_PROT_MASK       0x7F000000U
 #define MAP_CSW_DBG_SW_EN       0x80000000U // Debug SW Access Enable
+
+#define MAP_CSW_KEEP            0xFF00FF00U // preserve mode/type/prot fields

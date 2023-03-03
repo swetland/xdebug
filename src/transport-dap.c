@@ -10,70 +10,7 @@
 #include "arm-debug.h"
 #include "cmsis-dap-protocol.h"
 #include "transport.h"
-
-#define WITH_TRACE 0
-
-#if WITH_TRACE
-#define TRACE(fmt...) fprintf(stderr, fmt)
-#else
-#define TRACE(fmt...) do {} while (0)
-#endif
-
-#define ERROR(fmt...) fprintf(stderr, fmt)
-
-#if WITH_TRACE
-static void dump(const char* str, const void* ptr, unsigned len) {
-	const uint8_t* x = ptr;
-	TRACE("%s", str);
-	while (len > 0) {
-		TRACE(" %02x", *x++);
-		len--;
-	}
-	TRACE("\n");
-}
-#else
-#define dump(...) do {} while (0)
-#endif
-
-#define DC_ATTACHED 0 // attached and ready to do txns
-#define DC_FAILURE  1 // last txn failed, need to re-attach
-#define DC_DETACHED 2 // have not yet attached
-#define DC_OFFLINE  3 // usb connection not available
-
-#define INVALID 0xFFFFFFFFU
-
-struct debug_context {
-	usb_handle* usb;
-	unsigned status;
-
-	// dap protocol info
-	uint32_t max_packet_count;
-	uint32_t max_packet_size;
-
-	// dap internal state cache
-	uint32_t cfg_idle;
-	uint32_t cfg_wait;
-	uint32_t cfg_match;
-	uint32_t cfg_mask;
-
-	// configured DP.SELECT register value
-	uint32_t dp_select;
-	// last known state of DP.SELECT on the target
-	uint32_t dp_select_cache;
-
-	// transfer queue state
-	uint8_t txbuf[1024];
-	uint32_t* rxptr[256];
-	uint8_t *txnext;
-	uint32_t** rxnext;
-	uint32_t txavail;
-	uint32_t rxavail;
-	int qerror;
-};
-
-
-typedef struct debug_context DC;
-
+#include "transport-private.h"
 
 int dap_get_info(DC* dc, unsigned di, void *out, unsigned minlen, unsigned maxlen) {
 	uint8_t	buf[256 + 2];
@@ -127,12 +64,12 @@ int dap_cmd_std(DC* dc, const char* name, uint8_t* io,
 	return 0;
 }
 
-int dap_connect(DC* dc) {
+static int dap_connect(DC* dc) {
 	uint8_t io[2] = { DAP_Connect, PORT_SWD };
 	return dap_cmd_std(dc, "dap_connect()", io, 2, 2);
 }
 
-int dap_swd_configure(DC* dc, unsigned cfg) {
+static int dap_swd_configure(DC* dc, unsigned cfg) {
 	uint8_t io[2] = { DAP_SWD_Configure, cfg };
 	return dap_cmd_std(dc, "dap_swd_configure()", io, 2, 2);
 }
@@ -172,12 +109,15 @@ static void dc_q_clear(DC* dc) {
 	dc->txavail = dc->max_packet_size - 3;
 	dc->rxavail = dc->max_packet_size - 3;
 	dc->qerror = 0;
-	// TODO: less conservative mode: don't always invalidate
-	dc->dp_select_cache = INVALID;
-	dc->cfg_mask = INVALID;
 	dc->txbuf[0] = DAP_Transfer;
 	dc->txbuf[1] = 0; // Index 0 for SWD
 	dc->txbuf[2] = 0; // Count 0 initially
+
+	// TODO: less conservative mode: don't always invalidate
+	dc->dp_select_cache = INVALID;
+	dc->cfg_mask = INVALID;
+	dc->map_csw_cache = INVALID;
+	dc->map_tar_cache = INVALID;
 }
 
 void dc_q_init(DC* dc) {
@@ -440,7 +380,7 @@ static uint8_t attach_cmd[54] = {
 	0x28, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
-int dc_attach(DC* dc, unsigned flags, uint32_t tgt, uint32_t* idcode) {
+static int _dc_attach(DC* dc, unsigned flags, uint32_t tgt, uint32_t* idcode) {
 	uint8_t rsp[3];
 
 	if (flags & DC_MULTIDROP) {
@@ -465,6 +405,44 @@ int dc_attach(DC* dc, unsigned flags, uint32_t tgt, uint32_t* idcode) {
 	int r = dc_q_exec(dc);
 	return r;
 }
+
+int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
+	uint32_t n;
+
+	_dc_attach(dc, 0, 0, &n);
+	printf("IDCODE %08x\n", n);
+
+	// If this is a RP2040, we need to connect in multidrop
+	// mode before doing anything else.
+	if ((n == 0x0bc12477) && (tgt == 0)) {
+		dc_dp_rd(dc, DP_TARGETID, &n);
+		if (n == 0x01002927) { // RP2040
+			_dc_attach(dc, DC_MULTIDROP, 0x01002927, &n);
+		}
+	}
+
+	dc_dp_rd(dc, DP_CS, &n);
+	printf("CTRL/STAT   %08x\n", n);
+
+	// clear all sticky errors
+	dc_dp_wr(dc, DP_ABORT, DP_ABORT_ALLCLR);
+
+	// power up and wait for ack
+	dc_q_init(dc);
+	dc_q_set_mask(dc, DP_CS_CDBGPWRUPACK | DP_CS_CSYSPWRUPACK);
+	dc_q_dp_wr(dc, DP_CS, DP_CS_CDBGPWRUPREQ | DP_CS_CSYSPWRUPREQ);
+	dc_q_dp_match(dc, DP_CS, DP_CS_CDBGPWRUPACK | DP_CS_CSYSPWRUPACK);
+	dc_q_dp_rd(dc, DP_CS, &n);
+	dc_q_ap_rd(dc, MAP_CSW, &dc->map_csw_keep);
+	dc_q_exec(dc);
+	printf("CTRL/STAT   %08x\n", n);
+	printf("MAP.CSW     %08x\n", dc->map_csw_keep);
+
+	dc->map_csw_keep &= MAP_CSW_KEEP;
+
+	return 0;
+}
+
 
 static usb_handle* usb_connect(void) {
 	usb_handle *usb;
@@ -492,6 +470,10 @@ static int dap_configure(DC* dc) {
 	dc->cfg_wait = INVALID;
 	dc->cfg_match = INVALID;
 	dc->cfg_mask = INVALID;
+
+	dc->map_csw_keep = 0;
+	dc->map_csw_cache = INVALID;
+	dc->map_tar_cache = INVALID;
 
 	// setup default packet limits
 	dc->max_packet_count = 1;

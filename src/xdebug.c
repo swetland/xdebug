@@ -18,25 +18,11 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
+	dc_set_clock(dc, 1000000);
+
 	dc_attach(dc, 0, 0, &n);
-	printf("IDCODE %08x\n", n);
 
-	// If this is a RP2040, we need to connect in multidrop
-	// mode before doing anything else.
-	if (n == 0x0bc12477) {
-		dc_dp_rd(dc, DP_TARGETID, &n);
-		if (n == 0x01002927) { // RP2040
-			dc_attach(dc, DC_MULTIDROP, 0x01002927, &n);
-		}
-	}
-
-	// power up system & debug
-	dc_dp_rd(dc, DP_CS, &n);
-	printf("CTRL/STAT   %08x\n", n);
-	dc_dp_wr(dc, DP_CS, DP_CS_CDBGPWRUPREQ | DP_CS_CSYSPWRUPREQ);
-	dc_dp_rd(dc, DP_CS, &n);
-	printf("CTRL/STAT   %08x\n", n);
-
+#if 1
 	// dump some info
 	dc_dp_rd(dc, DP_DPIDR, &n);
 	printf("DP.DPIDR    %08x\n", n);
@@ -54,6 +40,16 @@ int main(int argc, char **argv) {
 	printf("MAP.CFG1    %08x\n", n);
 	dc_ap_rd(dc, MAP_BASE, &n);
 	printf("MAP.BASE    %08x\n", n);
+#endif
+
+	dc_mem_rd32(dc, 0, &n);
+	printf("%08x: %08x\n", 0, n);
+
+	unsigned addr = 0x00000000;
+	for (unsigned a = addr; a < addr + 32; a += 4) {
+		dc_mem_rd32(dc, a, &n);
+		printf("%08x: %08x\n", a, n);
+	}
 
 	return 0;
 }

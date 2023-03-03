@@ -5,6 +5,22 @@
 
 #include <stdint.h>
 
+#define DC_OK               0
+#define DC_ERR_FAILED      -1  // generic internal failure
+#define DC_ERR_BAD_PARAMS  -2  // Invalid parameters
+#define DC_ERR_IO          -3  // IO error (USB read fail, etc)
+#define DC_ERR_OFFLINE     -4  // IO error (USB device offline)
+#define DC_ERR_PROTOCOL    -5  // Protocol error (bug in sw or fw)
+#define DC_ERR_TIMEOUT     -6  // WAIT response from DP (retries insufficient)
+#define DC_ERR_SWD_FAULT   -7  // FAULT response from DP
+#define DC_ERR_SWD_PARITY  -8  // Corrupt Data
+#define DC_ERR_SWD_SILENT  -9  // No Status Indicated
+#define DC_ERR_SWD_BOGUS   -10 // Nonsensical Status Indicated
+#define DC_ERR_MATCH       -11 // read match failure
+#define DC_ERR_UNSUPPORTED -12 // unsupported operation
+#define DC_ERR_REMOTE      -13 // failure from debug probe
+#define DC_ERR_DETACHED    -14 // transport not connected to target
+
 typedef struct debug_context dctx_t;
 
 int dc_set_clock(dctx_t* dc, uint32_t hz);
@@ -29,7 +45,6 @@ void dc_q_set_mask(dctx_t* dc, uint32_t mask);
 void dc_q_ap_match(dctx_t* dc, unsigned apaddr, uint32_t val);
 void dc_q_dp_match(dctx_t* dc, unsigned apaddr, uint32_t val);
 
-
 // prepare for a set of transactions
 void dc_q_init(dctx_t* dc);
 
@@ -47,21 +62,17 @@ int dc_create(dctx_t** dc);
 
 // attempt to attach to the debug target
 int dc_attach(dctx_t* dc, unsigned flags, uint32_t tgt, uint32_t* idcode);
-
-#define DC_OK               0
-#define DC_ERR_FAILED      -1  // generic internal failure
-#define DC_ERR_BAD_PARAMS  -2  // Invalid parameters
-#define DC_ERR_IO          -3  // IO error (USB read fail, etc)
-#define DC_ERR_OFFLINE     -4  // IO error (USB device offline)
-#define DC_ERR_PROTOCOL    -5  // Protocol error (bug in sw or fw)
-#define DC_ERR_TIMEOUT     -6  // WAIT response from DP (retries insufficient)
-#define DC_ERR_SWD_FAULT   -7  // FAULT response from DP
-#define DC_ERR_SWD_PARITY  -8  // Corrupt Data
-#define DC_ERR_SWD_SILENT  -9  // No Status Indicated
-#define DC_ERR_SWD_BOGUS   -10 // Nonsensical Status Indicated
-#define DC_ERR_MATCH       -11 // read match failure
-#define DC_ERR_UNSUPPORTED -12 // unsupported operation
-#define DC_ERR_REMOTE      -13 // failure from debug probe
-#define DC_ERR_DETACHED    -14 // transport not connected to target
-
 #define DC_MULTIDROP 1
+
+
+void dc_q_mem_rd32(dctx_t* dc, uint32_t addr, uint32_t* val);
+void dc_q_mem_wr32(dctx_t* dc, uint32_t addr, uint32_t val);
+
+int dc_mem_rd32(dctx_t* dc, uint32_t addr, uint32_t* val);
+int dc_mem_wr32(dctx_t* dc, uint32_t addr, uint32_t val);
+
+int dc_mem_rd_words(dctx_t* dc, uint32_t addr, uint32_t num, uint32_t* ptr);
+int dc_mem_wr_words(dctx_t* dc, uint32_t addr, uint32_t num, const uint32_t* ptr);
+
+
+

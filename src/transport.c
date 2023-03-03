@@ -137,6 +137,12 @@ int dap_swd_configure(DC* dc, unsigned cfg) {
 	return dap_cmd_std(dc, "dap_swd_configure()", io, 2, 2);
 }
 
+int dc_set_clock(DC* dc, uint32_t hz) {
+	uint8_t io[5] = { DAP_SWJ_Clock,
+		hz, hz >> 8, hz >> 16, hz >> 24 };
+	return dap_cmd_std(dc, "dap_swj_clock()", io, 5, 2);
+}
+
 static int dap_xfer_config(DC* dc, unsigned idle, unsigned wait, unsigned match) {
 	// clamp to allowed max values
 	if (idle > 255) idle = 255;
@@ -550,7 +556,7 @@ static int dap_configure(DC* dc) {
 
 	dap_connect(dc);
 	dap_swd_configure(dc, CFG_Turnaround_1);
-	dap_xfer_config(dc, 8, 64, 0);
+	dap_xfer_config(dc, 8, 64, 64);
 	return DC_OK;
 }
 

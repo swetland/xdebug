@@ -61,6 +61,9 @@
 // Response BYTE(Status) BYTE(Execute)
 // Execute 1 = device specific reset sequence implemented
 
+#define DAP_SWJ_Clock 0x11 // WORD(hz)
+// Response BYTE(Status)
+
 #define DAP_SWJ_Pins 0x10 // BYTE(PinOut) BYTE(PinSel) WORD(PinWaitMicros)
 // Response BYTE(PinInput)
 // Modify pins (PinOut) where selected (PinSel)

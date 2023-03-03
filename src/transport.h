@@ -7,6 +7,8 @@
 
 typedef struct debug_context dctx_t;
 
+int dc_set_clock(dctx_t* dc, uint32_t hz);
+
 // queue Debug Port reads and writes
 // DP.SELECT will be updated as necessary
 void dc_q_dp_rd(dctx_t* dc, unsigned dpaddr, uint32_t* val);

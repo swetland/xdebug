@@ -25,6 +25,7 @@
 #define DP_ABORT_STKERRCLR        0x04U // clear CS.STICKYERR
 #define DP_ABORT_WDERRCLR         0x08U // clear CS.WDATAERR
 #define DP_ABORT_ORUNERRCLR       0x10U // clear CS.STICKYORUN
+#define DP_ABORT_ALLCLR           0x1EU
 
 #define DP_CS_ORUNDETECT          0x00000001U // RW
 #define DP_CS_STICKYORUN          0x00000002U // RO/WI

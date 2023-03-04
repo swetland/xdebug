@@ -55,6 +55,7 @@ int dc_mem_wr32(DC* dc, uint32_t addr, uint32_t val) {
 
 
 
+#if 0
 int dc_mem_rd_words(dctx_t* dc, uint32_t addr, uint32_t num, uint32_t* ptr) {
 	while (num > 0) {
 		dc_q_mem_rd32(dc, addr, ptr);
@@ -74,6 +75,55 @@ int dc_mem_wr_words(dctx_t* dc, uint32_t addr, uint32_t num, const uint32_t* ptr
 	}
 	return dc_q_exec(dc);
 }
+#else
+// some implementations support >10 bits, but 10 is the minimum required
+// by spec (and some targets like rp2040 are limited to this)
+#define WRAPSIZE 0x400
+#define WRAPMASK (WRAPSIZE - 1)
 
+int dc_mem_rd_words(dctx_t* dc, uint32_t addr, uint32_t num, uint32_t* ptr) {
+	while (num > 0) {
+		uint32_t xfer = (WRAPSIZE - (addr & WRAPMASK)) / 4;
+		if (xfer > num) {
+			xfer = num;
+		}
+		dc_q_init(dc);
+		dc_q_map_csw_wr(dc, MAP_CSW_SZ_32 | MAP_CSW_INC_SINGLE | MAP_CSW_DEVICE_EN);
+		dc_q_map_tar_wr(dc, addr);
+		num -= xfer;
+		addr += xfer * 4;
+		while (xfer > 0) {
+			dc_q_ap_rd(dc, MAP_DRW, ptr++);
+			xfer--;
+		}
+		int r = dc_q_exec(dc);
+		if (r != DC_OK) {
+			return r;
+		}
+	}
+	return DC_OK;
+}
 
-
+int dc_mem_wr_words(dctx_t* dc, uint32_t addr, uint32_t num, const uint32_t* ptr) {
+	while (num > 0) {
+		uint32_t xfer = (WRAPSIZE - (addr & WRAPMASK)) / 4;
+		if (xfer > num) {
+			xfer = num;
+		}
+		dc_q_init(dc);
+		dc_q_map_csw_wr(dc, MAP_CSW_SZ_32 | MAP_CSW_INC_SINGLE | MAP_CSW_DEVICE_EN);
+		dc_q_map_tar_wr(dc, addr);
+		num -= xfer;
+		addr += xfer * 4;
+		while (xfer > 0) {
+			dc_q_ap_wr(dc, MAP_DRW, *ptr++);
+			xfer--;
+		}
+		int r = dc_q_exec(dc);
+		if (r != DC_OK) {
+			return r;
+		}
+	}
+	return DC_OK;
+}
+#endif

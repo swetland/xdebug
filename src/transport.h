@@ -67,6 +67,7 @@ int dc_attach(dctx_t* dc, unsigned flags, uint32_t tgt, uint32_t* idcode);
 
 void dc_q_mem_rd32(dctx_t* dc, uint32_t addr, uint32_t* val);
 void dc_q_mem_wr32(dctx_t* dc, uint32_t addr, uint32_t val);
+void dc_q_mem_match32(dctx_t* dc, uint32_t addr, uint32_t val);
 
 int dc_mem_rd32(dctx_t* dc, uint32_t addr, uint32_t* val);
 int dc_mem_wr32(dctx_t* dc, uint32_t addr, uint32_t val);
@@ -75,4 +76,16 @@ int dc_mem_rd_words(dctx_t* dc, uint32_t addr, uint32_t num, uint32_t* ptr);
 int dc_mem_wr_words(dctx_t* dc, uint32_t addr, uint32_t num, const uint32_t* ptr);
 
 
+
+int dc_core_halt(dctx_t* dc);
+int dc_core_resume(dctx_t* dc);
+int dc_core_step(dctx_t* dc);
+
+int dc_core_reg_rd(dctx_t* dc, unsigned id, uint32_t* val);
+int dc_core_reg_wr(dctx_t* dc, unsigned id, uint32_t val);
+
+int dc_core_reg_rd_list(dctx_t* dc, uint32_t* id, uint32_t* val, unsigned count);
+
+// 0 = no, 1 = yes, < 0 = error
+int dc_core_check_halt(dctx_t* dc);
 

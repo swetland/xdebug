@@ -53,8 +53,9 @@
 
 
 // bit 16 controls read vs write
-#define DCRSR_RD 0x00000000
-#define DCRSR_WR 0x00010000
+#define DCRSR_RD      0x00000000
+#define DCRSR_WR      0x00010000
+#define DCRSR_ID_MASK 0x0000FFFF
 
 // to write: write value to DCRDR
 //           write (regno | DCRSR_WR) to DCRSR

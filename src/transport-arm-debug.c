@@ -5,6 +5,7 @@
 #include "transport-private.h"
 
 #include "arm-debug.h"
+#include "arm-v7-debug.h"
 
 static void dc_q_map_csw_wr(DC* dc, uint32_t val) {
 	if (val != dc->map_csw_cache) {
@@ -28,6 +29,16 @@ void dc_q_mem_rd32(DC* dc, uint32_t addr, uint32_t* val) {
 		dc_q_map_csw_wr(dc, MAP_CSW_SZ_32 | MAP_CSW_INC_OFF | MAP_CSW_DEVICE_EN);
 		dc_q_map_tar_wr(dc, addr);
 		dc_q_ap_rd(dc, MAP_DRW, val);
+	}
+}
+
+void dc_q_mem_match32(DC* dc, uint32_t addr, uint32_t val) {
+	if (addr & 3) {
+		dc->qerror = DC_ERR_BAD_PARAMS;
+	} else {
+		dc_q_map_csw_wr(dc, MAP_CSW_SZ_32 | MAP_CSW_INC_OFF | MAP_CSW_DEVICE_EN);
+		dc_q_map_tar_wr(dc, addr);
+		dc_q_ap_match(dc, MAP_DRW, val);
 	}
 }
 
@@ -127,3 +138,105 @@ int dc_mem_wr_words(dctx_t* dc, uint32_t addr, uint32_t num, const uint32_t* ptr
 	return DC_OK;
 }
 #endif
+
+int dc_core_check_halt(dctx_t* dc) {
+	uint32_t val;
+	int r;
+	if ((r = dc_mem_rd32(dc, DHCSR, &val)) < 0) {
+		return r;
+	}
+	if (val & DHCSR_S_HALT) {
+		return 1;
+	}
+	return 0;
+}
+
+int dc_core_halt(DC* dc) {
+	uint32_t val;
+	int r;
+	if ((r = dc_mem_rd32(dc, DHCSR, &val)) < 0) {
+		return r;
+	}
+	if (val & DHCSR_C_DEBUGEN) {
+		// preserve C_MASKINTS
+		val &= DHCSR_C_MASKINTS;
+	} else {
+		// when setting C_DEBUGEN to 1 (from 0),
+		// must write 0 to C_MASKINTS
+		val = 0;
+	}
+	// set C_HALT and C_DEBUGEN
+	val |= DHCSR_C_HALT | DHCSR_C_DEBUGEN | DHCSR_DBGKEY;
+	if ((r = dc_mem_wr32(dc, DHCSR, val)) < 0) {
+		return r;
+	}
+	for (unsigned n = 0; n < 64; n++) {
+		if (dc_core_check_halt(dc) == 1) {
+			return 0;
+		}
+	}
+	return DC_ERR_TIMEOUT;
+}
+
+int dc_core_resume(DC* dc){
+	uint32_t val;
+	int r;
+	if ((r = dc_mem_rd32(dc, DHCSR, &val)) < 0) {
+		return r;
+	}
+	if (val & DHCSR_C_DEBUGEN) {
+		// preserve C_MASKINTS
+		val &= DHCSR_C_MASKINTS;
+	} else {
+		// when setting C_DEBUGEN to 1 (from 0),
+		// must write 0 to C_MASKINTS
+		val = 0;
+	}
+	// clear C_HALT
+	val |= DHCSR_C_DEBUGEN | DHCSR_DBGKEY;
+	if ((r = dc_mem_wr32(dc, DHCSR, val)) < 0) {
+		return r;
+	}
+	for (unsigned n = 0; n < 64; n++) {
+		if (dc_core_check_halt(dc) == 0) {
+			return 0;
+		}
+	}
+	return DC_ERR_TIMEOUT;
+}
+
+int dc_core_step(DC* dc) {
+	return DC_ERR_FAILED;
+}
+
+static void dc_q_core_reg_rd(DC* dc, unsigned id, uint32_t* val) {
+	dc_q_mem_wr32(dc, DCRSR, DCRSR_RD | (id & DCRSR_ID_MASK));
+	dc_q_set_mask(dc, DHCSR_S_REGRDY);
+	dc_q_mem_match32(dc, DHCSR, DHCSR_S_REGRDY);
+	dc_q_mem_rd32(dc, DCRDR, val);
+}
+static void dc_q_core_reg_wr(DC* dc, unsigned id, uint32_t val) {
+	dc_q_mem_wr32(dc, DCRDR, val);
+	dc_q_mem_wr32(dc, DCRSR, DCRSR_WR | (id & DCRSR_ID_MASK));
+	dc_q_set_mask(dc, DHCSR_S_REGRDY);
+	dc_q_mem_match32(dc, DHCSR, DHCSR_S_REGRDY);
+}
+
+int dc_core_reg_rd(DC* dc, unsigned id, uint32_t* val) {
+	dc_q_init(dc);
+	dc_q_core_reg_rd(dc, id, val);
+	return dc_q_exec(dc);
+}
+int dc_core_reg_wr(DC* dc, unsigned id, uint32_t val) {
+	dc_q_init(dc);
+	dc_q_core_reg_wr(dc, id, val);
+	return dc_q_exec(dc);
+}
+int dc_core_reg_rd_list(DC* dc, uint32_t* id, uint32_t* val, unsigned count) {
+	dc_q_init(dc);
+	while (count > 0) {
+		dc_q_core_reg_rd(dc, *id++, val++);
+		count--;
+	}
+	return dc_q_exec(dc);
+}

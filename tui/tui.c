@@ -166,13 +166,6 @@ static int handle_event(UX* ux, void (*cb)(char*, unsigned) ) {
 	return 0;
 }
 
-static int running = 1;
-
-// TODO: handle calls from outside of tui_handle();
-void tui_exit(void) {
-	running = 0;
-}
-
 static UX ux = {
 	.list = {
 		.prev = &ux.list,
@@ -180,19 +173,21 @@ static UX ux = {
 	},
 };
 
-void tui_loop(void (*cb)(char*, unsigned)) {
+void tui_init(void) {
 	if (tb_init()) {
 		fprintf(stderr, "termbox init failed\n");
 		return;
 	}
-
 	tb_select_input_mode(TB_INPUT_ESC | TB_INPUT_SPACE);
-
 	repaint(&ux);
+}
 
-	while (running && (handle_event(&ux, cb) == 0)) ;
-
+void tui_exit(void) {
 	tb_shutdown();
+}
+
+int tui_handle_event(void (*cb)(char*, unsigned)) {
+	return handle_event(&ux, cb);
 }
 
 static void tui_logline(uint8_t* text, unsigned len) {
@@ -233,7 +228,7 @@ void tui_ch_destroy(tui_ch_t* ch) {
 	free(ch);
 }
 
-void tui_ch_vaprintf(tui_ch_t* ch, const char* fmt, va_list ap) {
+void tui_ch_vprintf(tui_ch_t* ch, const char* fmt, va_list ap) {
 	char tmp[1024];
 	int n = vsnprintf(tmp, sizeof(tmp), fmt, ap);
 	char *x = tmp;
@@ -257,7 +252,7 @@ void tui_ch_vaprintf(tui_ch_t* ch, const char* fmt, va_list ap) {
 void tui_ch_printf(tui_ch_t* ch, const char* fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
-	tui_ch_vaprintf(ch, fmt, ap);
+	tui_ch_vprintf(ch, fmt, ap);
 	va_end(ap);
 }
 
@@ -265,9 +260,18 @@ void tui_printf(const char* fmt, ...) {
 	va_list ap;
 	tui_ch_t ch = { 0 };
 	va_start(ap, fmt);
-	tui_ch_vaprintf(&ch, fmt, ap);
+	tui_ch_vprintf(&ch, fmt, ap);
 	va_end(ap);
 	if (ch.len > 0) {
 		tui_logline(ch.buffer, ch.len);
 	}
 }
+
+void tui_vprintf(const char* fmt, va_list ap) {
+	tui_ch_t ch = { 0 };
+	tui_ch_vprintf(&ch, fmt, ap);
+	if (ch.len > 0) {
+		tui_logline(ch.buffer, ch.len);
+	}
+}
+

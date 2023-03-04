@@ -5,15 +5,15 @@
 
 #include <stdarg.h>
 
-void tui_loop(void (*callback)(char* line, unsigned len));
-
+void tui_init(void);
 void tui_exit(void);
+int tui_handle_event(void (*callback)(char* line, unsigned len));
 
 // Write a line (or multiple lines separated by '\n') to the TUI log
 // Non-printing and non-ascii characters are ignored.
 // Lines larger than the TUI log max width (128) are truncated.
 void tui_printf(const char* fmt, ...);
-
+void tui_vprintf(const char* fmt, va_list ap);
 
 // TUI Channels provide a way for different entities to use a
 // printf() interface to send log lines to the TUI without
@@ -30,5 +30,5 @@ typedef struct tui_ch tui_ch_t;
 int tui_ch_create(tui_ch_t** ch, unsigned flags);
 void tui_ch_destroy(tui_ch_t* ch);
 void tui_ch_printf(tui_ch_t* ch, const char* fmt, ...);
-void tui_ch_vaprintf(tui_ch_t* ch, const char* fmt, va_list ap); 
+void tui_ch_vprintf(tui_ch_t* ch, const char* fmt, va_list ap); 
 

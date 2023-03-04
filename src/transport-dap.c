@@ -426,7 +426,7 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 	uint32_t n;
 
 	_dc_attach(dc, 0, 0, &n);
-	printf("IDCODE %08x\n", n);
+	INFO("IDCODE %08x\n", n);
 
 	// If this is a RP2040, we need to connect in multidrop
 	// mode before doing anything else.
@@ -438,7 +438,7 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 	}
 
 	dc_dp_rd(dc, DP_CS, &n);
-	printf("CTRL/STAT   %08x\n", n);
+	INFO("CTRL/STAT   %08x\n", n);
 
 	// clear all sticky errors
 	dc_dp_wr(dc, DP_ABORT, DP_ABORT_ALLCLR);
@@ -451,8 +451,8 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 	dc_q_dp_rd(dc, DP_CS, &n);
 	dc_q_ap_rd(dc, MAP_CSW, &dc->map_csw_keep);
 	dc_q_exec(dc);
-	printf("CTRL/STAT   %08x\n", n);
-	printf("MAP.CSW     %08x\n", dc->map_csw_keep);
+	INFO("CTRL/STAT   %08x\n", n);
+	INFO("MAP.CSW     %08x\n", dc->map_csw_keep);
 
 	dc->map_csw_keep &= MAP_CSW_KEEP;
 
@@ -503,40 +503,40 @@ static int dap_configure(DC* dc) {
 		int sz = dap_get_info(dc, n, buf, 0, 255);
 		if (sz > 0) {
 			buf[sz] = 0;
-			printf("0x%02x: '%s'\n", n, (char*) buf);
+			INFO("0x%02x: '%s'\n", n, (char*) buf);
 		}
 	}
 
 	buf[0] = 0; buf[1] = 0;
 	if (dap_get_info(dc, DI_Capabilities, buf, 1, 2) > 0) {
-		printf("Capabilities: 0x%02x 0x%02x\n", buf[0], buf[1]);
-		printf("Capabilities:");
-		if (buf[0] & I0_SWD) printf(" SWD");
-		if (buf[0] & I0_JTAG) printf(" JTAG");
-		if (buf[0] & I0_SWO_UART) printf(" SWO(UART)");
-		if (buf[0] & I0_SWO_Manchester) printf(" SWO(Manchester)");
-		if (buf[0] & I0_Atomic_Commands) printf(" ATOMIC");
-		if (buf[0] & I0_Test_Domain_Timer) printf(" TIMER");
-		if (buf[0] & I0_SWO_Streaming_Trace) printf(" SWO(Streaming)");
-		if (buf[0] & I0_UART_Comm_Port) printf(" UART");
-		if (buf[1] & I1_USB_COM_Port) printf(" USBCOM");
-		printf("\n");
+		INFO("Capabilities: 0x%02x 0x%02x\n", buf[0], buf[1]);
+		INFO("Capabilities:");
+		if (buf[0] & I0_SWD) INFO(" SWD");
+		if (buf[0] & I0_JTAG) INFO(" JTAG");
+		if (buf[0] & I0_SWO_UART) INFO(" SWO(UART)");
+		if (buf[0] & I0_SWO_Manchester) INFO(" SWO(Manchester)");
+		if (buf[0] & I0_Atomic_Commands) INFO(" ATOMIC");
+		if (buf[0] & I0_Test_Domain_Timer) INFO(" TIMER");
+		if (buf[0] & I0_SWO_Streaming_Trace) INFO(" SWO(Streaming)");
+		if (buf[0] & I0_UART_Comm_Port) INFO(" UART");
+		if (buf[1] & I1_USB_COM_Port) INFO(" USBCOM");
+		INFO("\n");
 	}
 	if (dap_get_info(dc, DI_UART_RX_Buffer_Size, &n32, 4, 4) == 4) {
-		printf("UART RX Buffer Size: %u\n", n32);
+		INFO("UART RX Buffer Size: %u\n", n32);
 	}
 	if (dap_get_info(dc, DI_UART_TX_Buffer_Size, &n32, 4, 4) == 4) {
-		printf("UART TX Buffer Size: %u\n", n32);
+		INFO("UART TX Buffer Size: %u\n", n32);
 	}
 	if (dap_get_info(dc, DI_SWO_Trace_Buffer_Size, &n32, 4, 4) == 4) {
-		printf("SWO Trace Buffer Size: %u\n", n32);
+		INFO("SWO Trace Buffer Size: %u\n", n32);
 	}
 	if (dap_get_info(dc, DI_Max_Packet_Count, &n8, 1, 1) == 1) {
-		printf("Max Packet Count: %u\n", n8);
+		INFO("Max Packet Count: %u\n", n8);
 		dc->max_packet_count = n8;
 	}
 	if (dap_get_info(dc, DI_Max_Packet_Size, &n16, 2, 2) == 2) {
-		printf("Max Packet Size: %u\n", n16);
+		INFO("Max Packet Size: %u\n", n16);
 		dc->max_packet_size = n16;
 	}
 	if ((dc->max_packet_count < 1) || (dc->max_packet_size < 64)) {

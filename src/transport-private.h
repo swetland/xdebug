@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "xdebug.h"
+
 #include <stdint.h>
 
 #include "usb.h"
@@ -51,17 +53,7 @@ typedef struct debug_context DC;
 #define INVALID 0xFFFFFFFFU
 
 
-#define WITH_TRACE 0
-
-#if WITH_TRACE
-#define TRACE(fmt...) fprintf(stderr, fmt)
-#else
-#define TRACE(fmt...) do {} while (0)
-#endif
-
-#define ERROR(fmt...) fprintf(stderr, fmt)
-
-#if WITH_TRACE
+#if 0
 static void dump(const char* str, const void* ptr, unsigned len) {
 	const uint8_t* x = ptr;
 	TRACE("%s", str);

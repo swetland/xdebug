@@ -156,11 +156,12 @@ void handle_line(char *line, unsigned len) {
 	}
 
 	cc.tok[0].info = tSTRING;
-	for (c = 1; c < n; n++) {
-		if (parse(cc.tok + n) < 0) {
+	for (c = 1; c < n; c++) {
+		if (parse(cc.tok + c) < 0) {
 			return;
 		}	
 	}
+	cc.count = n;
 	debugger_command(dc, &cc);
 }
 

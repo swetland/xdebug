@@ -9,6 +9,96 @@
 #include "arm-v7-system-control.h"
 
 
+int do_attach(DC* dc, CC* cc) {
+	uint32_t n;
+	dc_set_clock(dc, 4000000);
+	return dc_attach(dc, 0, 0, &n);
+}
+
+
+static uint32_t reglist[20] = {
+	0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+	10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+};
+static uint32_t lastregs[20];
+
+int do_regs(DC* dc, CC* cc) {
+	if (dc_core_reg_rd_list(dc, reglist, lastregs, 20)) {
+		return DBG_ERR;
+	}
+	INFO("r0 %08x r4 %08x r8 %08x ip %08x psr %08x\n",
+		lastregs[0], lastregs[4], lastregs[8],
+		lastregs[12], lastregs[16]);
+	INFO("r1 %08x r5 %08x r9 %08x sp %08x msp %08x\n",
+		lastregs[1], lastregs[5], lastregs[9],
+		lastregs[13], lastregs[17]);
+	INFO("r2 %08x r6 %08x 10 %08x lr %08x psp %08x\n",
+		lastregs[2], lastregs[6], lastregs[10],
+		lastregs[14], lastregs[18]);
+	INFO("r3 %08x r7 %08x 11 %08x pc %08x\n",
+		lastregs[3], lastregs[7], lastregs[11],
+		lastregs[15]);
+	INFO("control  %02x faultmsk %02x basepri  %02x primask  %02x\n",
+		lastregs[20] >> 24, (lastregs[20] >> 16) & 0xFF,
+		(lastregs[20] >> 8) & 0xFF, lastregs[20] & 0xFF);
+	return 0;
+}
+
+static uint32_t lastaddr = 0x20000000;
+static uint32_t lastcount = 0x40;
+
+int do_dw(DC* dc, CC* cc) {
+	uint32_t data[1024];
+	uint32_t addr;
+	uint32_t count;
+	unsigned n;
+
+	if (cmd_arg_u32_opt(cc, 1, &addr, lastaddr)) return DBG_ERR;
+	if (cmd_arg_u32_opt(cc, 2, &count, lastcount)) return DBG_ERR;
+
+	if (addr & 3) {
+		ERROR("address is not word-aligned\n");
+		return DBG_ERR;
+	}
+	count /= 4;
+	if (count < 1) return 0;
+
+	if (dc_mem_rd_words(dc, addr, count, data)) return DBG_ERR;
+	for (n = 0; count > 0; n += 4, addr += 16) {
+		switch (count) {
+		case 1:
+			count = 0;
+			INFO("%08x: %08x\n", addr, data[n]);
+			break;
+		case 2:
+			count = 0;
+			INFO("%08x: %08x %08x\n",
+				addr, data[n], data[n+1]);
+			break;
+		case 3:
+			count = 0;
+			INFO("%08x: %08x %08x %08x\n",
+				addr, data[n], data[n+1], data[n+2]);
+			break;
+		default:
+			count -= 4;
+			INFO("%08x: %08x %08x %08x %08x\n",
+				addr, data[n], data[n+1], data[n+2], data[n+3]);
+			break;
+		}
+	}
+	return 0;
+}
+
+
+int do_stop(DC* dc, CC* cc) {
+	return dc_core_halt(dc);
+}
+
+int do_resume(DC* dc, CC* cc) {
+	return dc_core_resume(dc);
+}
+
 int do_exit(DC* dc, CC* cc) {
 	debugger_exit();
 	return 0;
@@ -21,9 +111,17 @@ struct {
 	int (*func)(DC* dc, CC* cc);
 	const char* help;
 } CMDS[] = {
-	{ "exit", do_exit, "exit debugger" },
-	{ "quit", do_exit, NULL },
-	{ "help", do_help, "list debugger commands" },
+	{ "attach", do_attach, "connect to target" },
+	{ "stop",   do_stop,   "halt core" },
+	{ "halt",   do_stop,   NULL },
+	{ "resume", do_resume, "resume core" },
+	{ "go",     do_resume, NULL },
+	{ "dw",     do_dw,     "dw <addr> [ <count> ] - dump words" },
+	//{ "db",     do_db,     "db <addr> [ <count> ] - dump bytes" },
+	{ "regs",   do_regs,   "dump registers" },
+	{ "help",   do_help,   "list debugger commands" },
+	{ "exit",   do_exit,   "exit debugger" },
+	{ "quit",   do_exit,   NULL },
 };
 
 int do_help(DC* dc, CC* cc) {
@@ -36,7 +134,7 @@ int do_help(DC* dc, CC* cc) {
 		if (CMDS[n].help == NULL) {
 			continue;
 		}
-		INFO("%-*s %s", w, CMDS[n].name, CMDS[n].help);
+		INFO("%-*s %s\n", w + 3, CMDS[n].name, CMDS[n].help);
 	}
 	return 0;
 }

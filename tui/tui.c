@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <pthread.h>
 
 #include <tui.h>
 #include <termbox.h>
@@ -24,6 +25,8 @@ struct line {
 };
 
 struct ux {
+	pthread_mutex_t lock;
+
 	int w;
 	int h;
 	int invalid;
@@ -96,18 +99,10 @@ static int repaint(UX* ux) {
 	return 0;
 }
 
-static int handle_event(UX* ux, void (*cb)(char*, unsigned) ) {
-	struct tb_event ev;
-	tb_present();
-
-	if ((tb_poll_event(&ev) < 0) ||
-	    (ev.key == TB_KEY_CTRL_C)) {
-		return -1;
-	}
-
+static int handle_event(UX* ux, struct tb_event* ev, char* line, unsigned* len) {
 	// always process full repaints due to resize or user request
-	if ((ev.type == TB_EVENT_RESIZE) ||
-	    (ev.key == TB_KEY_CTRL_L)) {
+	if ((ev->type == TB_EVENT_RESIZE) ||
+	    (ev->key == TB_KEY_CTRL_L)) {
 		ux->invalid = repaint(ux);
 		return 0;
 	}
@@ -117,16 +112,16 @@ static int handle_event(UX* ux, void (*cb)(char*, unsigned) ) {
 		return 0;
 	}
 		
-	switch (ev.key) {
+	switch (ev->key) {
 	case 0: // printable character
 		// ignore fancy unicode characters
-		if (ev.ch > 255) {
+		if (ev->ch > 255) {
 			break;
 		}
 		if (ux->len >= MAXWIDTH) {
 			break;
 		}
-		ux->cmd[ux->len++] = ev.ch;
+		ux->cmd[ux->len++] = ev->ch;
 		paint_cmdline(ux);
 		break;
 	case TB_KEY_BACKSPACE:
@@ -137,21 +132,23 @@ static int handle_event(UX* ux, void (*cb)(char*, unsigned) ) {
 		}
 		break;
 	case TB_KEY_ENTER: {
-		unsigned len = ux->len;
-		// clear command line
+		// pass commandline out to caller
+		*len = ux->len;
+		memcpy(line, ux->cmd, ux->len);
+		line[ux->len] = 0;
+
+		// update display, clearing commandline
 		ux->len = 0;
 		paint_cmdline(ux);
 		tb_present();
-		// process command
-		ux->cmd[len] = 0;
-		cb((void*) ux->cmd, len);
-		break;
+
+		return 1;
 	}
 	default:
 #if 0 // debug unexpected keys
 		if (ux->len < (MAXWIDTH - 6)) {
 			char tmp[5];
-			sprintf(tmp, "%04x", ev.key);
+			sprintf(tmp, "%04x", ev->key);
 			ux->cmd[ux->len++] = '<';
 			ux->cmd[ux->len++] = tmp[0];
 			ux->cmd[ux->len++] = tmp[1];
@@ -167,6 +164,7 @@ static int handle_event(UX* ux, void (*cb)(char*, unsigned) ) {
 }
 
 static UX ux = {
+	.lock = PTHREAD_MUTEX_INITIALIZER,
 	.list = {
 		.prev = &ux.list,
 		.next = &ux.list,
@@ -187,7 +185,30 @@ void tui_exit(void) {
 }
 
 int tui_handle_event(void (*cb)(char*, unsigned)) {
-	return handle_event(&ux, cb);
+	struct tb_event ev;
+	char line[MAXWIDTH + 1];
+	unsigned len;
+	int r;
+
+	pthread_mutex_lock(&ux.lock);
+	tb_present();
+	pthread_mutex_unlock(&ux.lock);
+
+	if ((tb_poll_event(&ev) < 0) ||
+	    (ev.key == TB_KEY_CTRL_C)) {
+		return -1;
+	}
+
+	pthread_mutex_lock(&ux.lock);
+	r = handle_event(&ux, &ev, line, &len);
+	pthread_mutex_unlock(&ux.lock);
+
+	if (r == 1) {
+		cb(line, len);
+		return 0;
+	} else {
+		return r;
+	}
 }
 
 static void tui_logline(uint8_t* text, unsigned len) {
@@ -198,6 +219,8 @@ static void tui_logline(uint8_t* text, unsigned len) {
 	line->fg = TB_DEFAULT;
 	line->bg = TB_DEFAULT;
 
+	pthread_mutex_lock(&ux.lock);
+
 	// add line to the log
 	line->prev = ux.list.prev;
 	line->next = &ux.list;
@@ -207,6 +230,8 @@ static void tui_logline(uint8_t* text, unsigned len) {
 	// refresh the log
 	paint_log(&ux);
 	tb_present();
+
+	pthread_mutex_unlock(&ux.lock);
 }
 
 struct tui_ch {

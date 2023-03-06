@@ -5,6 +5,9 @@
 
 #include <stdint.h>
 
+void dc_require_vid_pid(unsigned vid, unsigned pid);
+void dc_require_serialno(const char* sn);
+
 #define DC_OK               0
 #define DC_ERR_FAILED      -1  // generic internal failure
 #define DC_ERR_BAD_PARAMS  -2  // Invalid parameters

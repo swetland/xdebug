@@ -10,7 +10,7 @@ typedef struct usb_handle usb_handle;
 
 /* simple usb api for devices with bulk in+out interfaces */
 
-usb_handle *usb_open(unsigned vid, unsigned pid, unsigned ifc);
+usb_handle *usb_open(unsigned vid, unsigned pid, const char* sn);
 void usb_close(usb_handle *usb);
 int usb_read(usb_handle *usb, void *data, int len);
 int usb_read_forever(usb_handle *usb, void *data, int len);

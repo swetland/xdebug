@@ -460,18 +460,21 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 }
 
 
+static unsigned dc_vid = 0;
+static unsigned dc_pid = 0;
+static const char* dc_serialno = NULL;
+
+void dc_require_vid_pid(unsigned vid, unsigned pid) {
+	dc_vid = vid;
+	dc_pid = pid;
+}
+
+void dc_require_serialno(const char* sn) {
+	dc_serialno = sn;
+}
+
 static usb_handle* usb_connect(void) {
-	usb_handle *usb;
-	
-	usb = usb_open(0x1fc9, 0x0143, 0);
-	if (usb == 0) {
-		usb = usb_open(0x2e8a, 0x000c, 42);
-		if (usb == 0) {
-			ERROR("cannot find device\n");
-			return NULL;
-		}
-	}
-	return usb;
+	return usb_open(dc_vid, dc_pid, dc_serialno);
 }
 
 // setup a newly connected DAP device

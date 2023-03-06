@@ -168,6 +168,31 @@ void handle_line(char *line, unsigned len) {
 static tui_ch_t* ch;
 
 int main(int argc, char** argv) {
+	for (int n = 1; n < argc; n++) {
+		if (!strcmp(argv[n], "-usb")) {
+			n++;
+			if (n == argc) {
+				fprintf(stderr, "option -usb requires vid:pid\n");
+				return -1;
+			}
+			char *x = strchr(argv[n], ':');
+			if (x == NULL) {
+				fprintf(stderr, "option -usb requires vid:pid\n");
+				return -1;
+			}
+			dc_require_vid_pid(strtoul(argv[n], 0, 16), strtoul(x+1, 0, 16));
+		} else if (!strcmp(argv[n], "-sn")) {
+			n++;
+			if (n == argc) {
+				fprintf(stderr, "option -sn requires serialno\n");
+				return -1;
+			}
+			dc_require_serialno(argv[n]);
+		} else {
+			fprintf(stderr, "unknown option '%s'\n", argv[n]);
+			return -1;
+		}
+	}
 	tui_init();
 	tui_ch_create(&ch, 0);
 	dc_create(&dc);

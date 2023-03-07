@@ -12,15 +12,31 @@
 #include "transport.h"
 #include "transport-private.h"
 
+static void usb_failure(DC* dc, int status) {
+	ERROR("usb_failure status %d usb %p\n", status, dc->usb);
+	if (dc->usb != NULL) {
+		usb_close(dc->usb);
+		dc->usb = NULL;
+	}
+	dc->status = DC_OFFLINE;
+}
+
 static int dap_get_info(DC* dc, unsigned di, void *out, unsigned minlen, unsigned maxlen) {
 	uint8_t	buf[256 + 2];
 	buf[0] = DAP_Info;
 	buf[1] = di;
-	if (usb_write(dc->usb, buf, 2) != 2) {
+	int r;
+	if ((r = usb_write(dc->usb, buf, 2)) != 2) {
+		if (r < 0) {
+			usb_failure(dc, r);
+		}
 		return DC_ERR_IO;
 	}
 	int sz = usb_read(dc->usb, buf, 256 + 2);
 	if ((sz < 2) || (buf[0] != DAP_Info)) {
+		if (sz < 0) {
+			usb_failure(dc, sz);
+		}
 		return DC_ERR_PROTOCOL;
 	}
 	if ((buf[1] < minlen) || (buf[1] > maxlen)) {
@@ -33,13 +49,20 @@ static int dap_get_info(DC* dc, unsigned di, void *out, unsigned minlen, unsigne
 static int dap_cmd(DC* dc, const void* tx, unsigned txlen, void* rx, unsigned rxlen) {
 	uint8_t cmd = ((const uint8_t*) tx)[0];
 	dump("TX>", tx, txlen);
-	if (usb_write(dc->usb, tx, txlen) != txlen) {
+	int r;
+	if ((r = usb_write(dc->usb, tx, txlen)) != txlen) {
 		ERROR("dap_cmd(0x%02x): usb write error\n", cmd);
+		if (r < 0) {
+			usb_failure(dc, r);
+		}
 		return DC_ERR_IO;
 	}
 	int sz = usb_read(dc->usb, rx, rxlen);
 	if (sz < 1) {
 		ERROR("dap_cmd(0x%02x): usb read error\n", cmd);
+		if (sz < 0) {
+			usb_failure(dc, sz);
+		}
 		return DC_ERR_IO;
 	}
 	dump("RX>", rx, rxlen);
@@ -66,7 +89,14 @@ static int dap_cmd_std(DC* dc, const char* name, uint8_t* io,
 
 static int dap_connect(DC* dc) {
 	uint8_t io[2] = { DAP_Connect, PORT_SWD };
-	return dap_cmd_std(dc, "dap_connect()", io, 2, 2);
+	int r = dap_cmd(dc, io, 2, io, 2);
+	if (r < 0) {
+		return r;
+	}
+	if (io[1] != PORT_SWD) {
+		return DC_ERR_REMOTE;
+	}
+	return 0;
 }
 
 static int dap_swd_configure(DC* dc, unsigned cfg) {
@@ -171,16 +201,21 @@ static int _dc_q_exec(DC* dc) {
 	}
 	int sz = dc->txnext - dc->txbuf;
 	dump("TX>", dc->txbuf, sz);
-	if (usb_write(dc->usb, dc->txbuf, sz) != sz) {
+	int n = usb_write(dc->usb, dc->txbuf, sz);
+	if (n != sz) {
 		ERROR("dc_q_exec() usb write error\n");
+		if (n < 0) {
+			usb_failure(dc, n);
+		}
 		return DC_ERR_IO;
 	}
 	sz = 3 + (dc->rxnext - dc->rxptr) * 4;
 	uint8_t rxbuf[1024];
 	memset(rxbuf, 0xEE, 1024); // DEBUG
-	int n = usb_read(dc->usb, rxbuf, sz);
+	n = usb_read(dc->usb, rxbuf, sz);
 	if (n < 0) {
 		ERROR("dc_q_exec() usb read error\n");
+		usb_failure(dc, n);
 		return DC_ERR_IO;
 	}
 	dump("RX>", rxbuf, sz);
@@ -209,7 +244,6 @@ int dc_q_exec(DC* dc) {
 	if (r == DC_ERR_SWD_FAULT) {
 		// clear all sticky errors
 		dc_dp_wr(dc, DP_ABORT, DP_ABORT_ALLCLR);
-
 	}
 	return r;
 }
@@ -456,6 +490,8 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 
 	dc->map_csw_keep &= MAP_CSW_KEEP;
 
+	dc->status = DC_ATTACHED;
+
 	return 0;
 }
 
@@ -475,6 +511,21 @@ void dc_require_serialno(const char* sn) {
 
 static usb_handle* usb_connect(void) {
 	return usb_open(dc_vid, dc_pid, dc_serialno);
+}
+
+static const char* di_name(unsigned n) {
+	switch (n) {
+	case DI_Vendor_Name: return "Vendor Name";
+	case DI_Product_Name: return "Product Name";
+	case DI_Serial_Number: return "Serial Number";
+	case DI_Protocol_Version: return "Protocol Version";
+	case DI_Target_Device_Vendor: return "Target Device Vendor";
+	case DI_Target_Device_Name: return "Target Device Name";
+	case DI_Target_Board_Vendor: return "Target Board Vendor";
+	case DI_Target_Board_Name: return "Target Board Name";
+	case DI_Product_Firmware_Version: return "Product Firmware Version";
+	default: return "???";
+	}
 }
 
 // setup a newly connected DAP device
@@ -506,14 +557,13 @@ static int dap_configure(DC* dc) {
 		int sz = dap_get_info(dc, n, buf, 0, 255);
 		if (sz > 0) {
 			buf[sz] = 0;
-			INFO("0x%02x: '%s'\n", n, (char*) buf);
+			INFO("connect: %s: '%s'\n", di_name(n), (char*) buf);
 		}
 	}
 
 	buf[0] = 0; buf[1] = 0;
 	if (dap_get_info(dc, DI_Capabilities, buf, 1, 2) > 0) {
-		INFO("Capabilities: 0x%02x 0x%02x\n", buf[0], buf[1]);
-		INFO("Capabilities:");
+		INFO("connect: Capabilities:");
 		if (buf[0] & I0_SWD) INFO(" SWD");
 		if (buf[0] & I0_JTAG) INFO(" JTAG");
 		if (buf[0] & I0_SWO_UART) INFO(" SWO(UART)");
@@ -526,22 +576,22 @@ static int dap_configure(DC* dc) {
 		INFO("\n");
 	}
 	if (dap_get_info(dc, DI_UART_RX_Buffer_Size, &n32, 4, 4) == 4) {
-		INFO("UART RX Buffer Size: %u\n", n32);
+		INFO("connect: UART RX Buffer Size: %u\n", n32);
 	}
 	if (dap_get_info(dc, DI_UART_TX_Buffer_Size, &n32, 4, 4) == 4) {
-		INFO("UART TX Buffer Size: %u\n", n32);
+		INFO("connect: UART TX Buffer Size: %u\n", n32);
 	}
 	if (dap_get_info(dc, DI_SWO_Trace_Buffer_Size, &n32, 4, 4) == 4) {
-		INFO("SWO Trace Buffer Size: %u\n", n32);
+		INFO("connect: SWO Trace Buffer Size: %u\n", n32);
 	}
 	if (dap_get_info(dc, DI_Max_Packet_Count, &n8, 1, 1) == 1) {
-		INFO("Max Packet Count: %u\n", n8);
 		dc->max_packet_count = n8;
 	}
 	if (dap_get_info(dc, DI_Max_Packet_Size, &n16, 2, 2) == 2) {
-		INFO("Max Packet Size: %u\n", n16);
 		dc->max_packet_size = n16;
 	}
+	INFO("connect: Max Packet Count: %u, Size: %u\n",
+		dc->max_packet_count, dc->max_packet_size);
 	if ((dc->max_packet_count < 1) || (dc->max_packet_size < 64)) {
 		ERROR("dc_init() impossible packet configuration\n");
 		return DC_ERR_PROTOCOL;
@@ -561,23 +611,54 @@ static int dap_configure(DC* dc) {
 	return DC_OK;
 }
 
+static void dc_connect(DC* dc) {
+	if ((dc->usb = usb_connect()) != NULL) {
+		dc->status = DC_UNCONFIG;
+		if (dap_configure(dc) == 0) {
+			dc->status = DC_DETACHED;
+		}
+	}
+}
+
 int dc_create(DC** out) {
 	DC* dc;
 
 	if ((dc = calloc(1, sizeof(DC))) == NULL) {
 		return DC_ERR_FAILED;
 	}
-	
-	if ((dc->usb = usb_connect()) == NULL) {
-		free(dc);
-		return DC_ERR_OFFLINE;
-	}
-
-	int r = dap_configure(dc);
-	if (r < 0) {
-		free(dc);
-	} else {
-		*out = dc;
-	}
-	return r;
+	*out = dc;
+	dc->status = DC_OFFLINE;
+	dc_connect(dc);
+	return 0;
 }
+
+int dc_periodic(DC* dc) {
+	switch (dc->status) {
+	case DC_OFFLINE:
+		dc_connect(dc);
+		return 1000;
+	case DC_ATTACHED: {
+		uint32_t n;
+		int r = dc_dp_rd(dc, DP_CS, &n);
+		if (r == DC_ERR_IO) {
+			dc->status = DC_OFFLINE;
+			ERROR("offline\n");
+		} else if (r < 0) {
+			dc->status = DC_DETACHED;
+			ERROR("detached\n");
+		}
+		return 250;
+	}
+	case DC_FAILURE:
+	case DC_UNCONFIG:
+	case DC_DETACHED: {
+		// ping the probe to see if USB is still connected
+		uint8_t buf[256 + 2];
+		dap_get_info(dc, DI_Protocol_Version, buf, 0, 255);
+		return 1000;
+	}
+	default:
+		return 1000;
+	}
+}
+

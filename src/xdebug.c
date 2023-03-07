@@ -7,6 +7,10 @@
 #include <string.h>
 #include <stdarg.h>
 
+#include <pthread.h>
+#include <sys/eventfd.h>
+#include <poll.h>
+
 #include "xdebug.h"
 #include "tui.h"
 
@@ -109,7 +113,7 @@ int parse(TOKEN* tok) {
 	return 0;
 }
 
-void handle_line(char *line, unsigned len) {
+void debug_command(char *line) {
 	CC cc;
 
 	while (*line && (*line <= ' ')) line++;
@@ -165,6 +169,52 @@ void handle_line(char *line, unsigned len) {
 	debugger_command(dc, &cc);
 }
 
+static volatile int running = 1;
+static volatile int busy = 0;
+static int efd = -1;
+static char linebuf[1024];
+
+static void *work_thread(void* arg) {
+	struct pollfd pfd = {
+		.fd = efd,
+		.events = POLLIN,
+	};
+	int timeout = 250;
+	while (running) {
+		int r = poll(&pfd, 1, timeout);
+		if (r < 0) {
+			exit(-1);
+		}
+		if (r == 0) {
+			timeout = dc_periodic(dc);
+			if (timeout < 100) {
+				timeout = 100;
+			}
+			continue;
+		}
+		uint64_t n;
+		if (read(efd, &n, sizeof(n)) != sizeof(n)) {
+			break;
+		}
+		if (busy) {
+			debug_command(linebuf);
+			busy = 0;
+		}
+	}
+	return 0;
+}
+
+void handle_line(char *line, unsigned len) {
+	if (busy) {
+		INFO("busy\n");
+	} else if (len < (sizeof(linebuf)-1)) {
+		memcpy(linebuf, line, len + 1);
+		busy = 1;
+		uint64_t n = 1;
+		if (write(efd, &n, sizeof(n))) {}
+	}
+}
+
 static tui_ch_t* ch;
 
 int main(int argc, char** argv) {
@@ -193,9 +243,22 @@ int main(int argc, char** argv) {
 			return -1;
 		}
 	}
+
+	if ((efd = eventfd(0, 0)) < 0) {
+		fprintf(stderr, "cannot create eventfd\n");
+		return -1;
+	}
+
 	tui_init();
 	tui_ch_create(&ch, 0);
 	dc_create(&dc);
+
+	pthread_t t;
+	if (pthread_create(&t, NULL, work_thread, NULL) != 0) {
+		fprintf(stderr, "cannot start thread\n");
+		return -1;
+	}
+
 	while (tui_handle_event(handle_line) == 0) ;
 	tui_exit();
 	return 0;

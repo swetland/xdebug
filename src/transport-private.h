@@ -48,7 +48,8 @@ typedef struct debug_context DC;
 #define DC_ATTACHED 0 // attached and ready to do txns
 #define DC_FAILURE  1 // last txn failed, need to re-attach
 #define DC_DETACHED 2 // have not yet attached
-#define DC_OFFLINE  3 // usb connection not available
+#define DC_UNCONFIG 3 // configure failed
+#define DC_OFFLINE  4 // usb connection not available
 
 #define INVALID 0xFFFFFFFFU
 

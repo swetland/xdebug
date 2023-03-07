@@ -269,6 +269,9 @@ void usb_close(usb_handle *usb) {
 
 int usb_ctrl(usb_handle *usb, void *data,
 	uint8_t typ, uint8_t req, uint16_t val, uint16_t idx, uint16_t len) {
+	if (usb == NULL) {
+		return LIBUSB_ERROR_NO_DEVICE;
+	}
 	int r = libusb_control_transfer(usb->dev, typ, req, val, idx, data, len, 5000);
 	if (r < 0) {
 		return -1;
@@ -278,6 +281,9 @@ int usb_ctrl(usb_handle *usb, void *data,
 }
 
 int usb_read(usb_handle *usb, void *data, int len) {
+	if (usb == NULL) {
+		return LIBUSB_ERROR_NO_DEVICE;
+	}
 	int xfer = len;
 	int r = libusb_bulk_transfer(usb->dev, usb->ei, data, len, &xfer, 5000);
 	if (r < 0) {
@@ -287,6 +293,9 @@ int usb_read(usb_handle *usb, void *data, int len) {
 }
 
 int usb_read_forever(usb_handle *usb, void *data, int len) {
+	if (usb == NULL) {
+		return LIBUSB_ERROR_NO_DEVICE;
+	}
 	int xfer = len;
 	int r = libusb_bulk_transfer(usb->dev, usb->ei, data, len, &xfer, 0);
 	if (r < 0) {
@@ -296,6 +305,9 @@ int usb_read_forever(usb_handle *usb, void *data, int len) {
 }
 
 int usb_write(usb_handle *usb, const void *data, int len) {
+	if (usb == NULL) {
+		return LIBUSB_ERROR_NO_DEVICE;
+	}
 	int xfer = len;
 	int r = libusb_bulk_transfer(usb->dev, usb->eo, (void*) data, len, &xfer, 5000);
 	if (r < 0) {

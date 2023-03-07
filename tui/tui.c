@@ -144,6 +144,11 @@ static int handle_event(UX* ux, struct tb_event* ev, char* line, unsigned* len) 
 
 		return 1;
 	}
+	case TB_KEY_ESC: {
+		*len = 5;
+		memcpy(line, "@ESC@", 6);
+		return 1;
+	}
 	default:
 #if 0 // debug unexpected keys
 		if (ux->len < (MAXWIDTH - 6)) {

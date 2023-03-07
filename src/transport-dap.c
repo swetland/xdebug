@@ -12,6 +12,14 @@
 #include "transport.h"
 #include "transport-private.h"
 
+void dc_interrupt(DC *dc) {
+	dc->attn++;
+}
+
+uint32_t dc_get_attn_value(DC *dc) {
+	return dc->attn;
+}
+
 static void usb_failure(DC* dc, int status) {
 	ERROR("usb_failure status %d usb %p\n", status, dc->usb);
 	if (dc->usb != NULL) {

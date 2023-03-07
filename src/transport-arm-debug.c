@@ -206,7 +206,44 @@ int dc_core_resume(DC* dc){
 }
 
 int dc_core_step(DC* dc) {
-	return DC_ERR_FAILED;
+	uint32_t val;
+	int r;
+	if ((r = dc_mem_rd32(dc, DHCSR, &val)) < 0) {
+		return r;
+	}
+	val &= (DHCSR_C_DEBUGEN | DHCSR_C_HALT | DHCSR_C_MASKINTS);
+	val |= DHCSR_DBGKEY;
+
+	if (!(val & DHCSR_C_HALT)) {
+		val |= DHCSR_C_HALT | DHCSR_C_DEBUGEN;
+		if ((r = dc_mem_wr32(dc, DHCSR, val)) < 0) {
+			return r;
+		}
+	} else {
+		val = (val & (~DHCSR_C_HALT)) | DHCSR_C_STEP;
+		if ((r = dc_mem_wr32(dc, DHCSR, val)) < 0) {
+			return r;
+		}
+	}
+	return 0;
+}
+
+int dc_core_wait_halt(DC* dc) {
+	uint32_t last = dc_get_attn_value(dc);
+	uint32_t val;
+	int r;
+	for (;;) {
+		if ((r = dc_mem_rd32(dc, DHCSR, &val)) < 0) {
+			return r;
+		}
+		if (val & DHCSR_S_HALT) {
+			return 0;
+		}
+		if (last != dc_get_attn_value(dc)) {
+			return DC_ERR_INTERRUPTED;
+		}
+	}
+	return 0;
 }
 
 static void dc_q_core_reg_rd(DC* dc, unsigned id, uint32_t* val) {

@@ -22,7 +22,7 @@ static uint32_t reglist[20] = {
 };
 static uint32_t lastregs[20];
 
-int do_regs(DC* dc, CC* cc) {
+static int read_show_regs(DC* dc) {
 	if (dc_core_reg_rd_list(dc, reglist, lastregs, 20)) {
 		return DBG_ERR;
 	}
@@ -42,6 +42,10 @@ int do_regs(DC* dc, CC* cc) {
 		lastregs[20] >> 24, (lastregs[20] >> 16) & 0xFF,
 		(lastregs[20] >> 8) & 0xFF, lastregs[20] & 0xFF);
 	return 0;
+}
+
+int do_regs(DC* dc, CC* cc) {
+	return read_show_regs(dc);
 }
 
 static uint32_t lastaddr = 0x20000000;
@@ -90,13 +94,57 @@ int do_dw(DC* dc, CC* cc) {
 	return 0;
 }
 
+int do_rd(DC* dc, CC* cc) {
+	uint32_t addr, val;
+	if (cmd_arg_u32(cc, 1, &addr)) return DBG_ERR;
+	int r = dc_mem_rd32(dc, addr, &val);
+	if (r < 0) {
+		INFO("%08x: ????????\n", addr);
+	} else {
+		INFO("%08x: %08x\n", addr, val);
+	}
+	return r;
+}
+
+int do_wr(DC* dc, CC* cc) {
+	uint32_t addr, val;
+	if (cmd_arg_u32(cc, 1, &addr)) return DBG_ERR;
+	if (cmd_arg_u32(cc, 2, &val)) return DBG_ERR;
+	int r;
+	if ((r = dc_mem_wr32(dc, addr, val)) == 0) {
+		INFO("%08x< %08x\n", addr, val);
+	}
+	return r;
+}
 
 int do_stop(DC* dc, CC* cc) {
-	return dc_core_halt(dc);
+	int r;
+	if ((r = dc_core_halt(dc)) < 0) {
+		return r;
+	}
+	if ((r = dc_core_wait_halt(dc)) < 0) {
+		return r;
+	}
+	return read_show_regs(dc);
 }
 
 int do_resume(DC* dc, CC* cc) {
 	return dc_core_resume(dc);
+}
+
+int do_step(DC* dc, CC* cc) {
+	int r;
+	if ((r = dc_core_step(dc)) < 0) {
+		return r;
+	}
+	if ((r = dc_core_wait_halt(dc)) < 0) {
+		return r;
+	}
+	return read_show_regs(dc);
+}
+
+int do_reset(DC* dc, CC* cc) {
+	return -1; //return dc_core_reset(dc);
 }
 
 int do_exit(DC* dc, CC* cc) {
@@ -114,12 +162,17 @@ struct {
 	{ "attach", do_attach, "connect to target" },
 	{ "stop",   do_stop,   "halt core" },
 	{ "halt",   do_stop,   NULL },
-	{ "resume", do_resume, "resume core" },
 	{ "go",     do_resume, NULL },
-	{ "dw",     do_dw,     "dw <addr> [ <count> ] - dump words" },
-	//{ "db",     do_db,     "db <addr> [ <count> ] - dump bytes" },
+	{ "resume", do_resume, "resume core" },
+	{ "step",   do_step,   "single-step core" },
+	{ "reset",  do_reset,  "reset core" },
+	{ "dw",     do_dw,     "dump words        dw <addr> [ <count> ]" },
+	//{ "db",     do_db,     "dump bytes        db <addr> [ <count> ]" },
+	{ "rd",     do_rd,     "read word         rd <addr>" },
+	{ "dr",     do_rd,     NULL },
+	{ "wr",     do_wr,     "write word        wr <addr> <val>" },
 	{ "regs",   do_regs,   "dump registers" },
-	{ "help",   do_help,   "list debugger commands" },
+	{ "help",   do_help,   "list commands" },
 	{ "exit",   do_exit,   "exit debugger" },
 	{ "quit",   do_exit,   NULL },
 };

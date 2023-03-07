@@ -12,6 +12,8 @@ void dc_require_serialno(const char* sn);
 typedef struct debug_context dctx_t;
 int dc_periodic(dctx_t* dc);
 
+void dc_interrupt(dctx_t* dc);
+
 #define DC_OK               0
 #define DC_ERR_FAILED      -1  // generic internal failure
 #define DC_ERR_BAD_PARAMS  -2  // Invalid parameters
@@ -27,6 +29,8 @@ int dc_periodic(dctx_t* dc);
 #define DC_ERR_UNSUPPORTED -12 // unsupported operation
 #define DC_ERR_REMOTE      -13 // failure from debug probe
 #define DC_ERR_DETACHED    -14 // transport not connected to target
+#define DC_ERR_BAD_STATE   -15
+#define DC_ERR_INTERRUPTED -16
 
 int dc_set_clock(dctx_t* dc, uint32_t hz);
 
@@ -85,6 +89,7 @@ int dc_mem_wr_words(dctx_t* dc, uint32_t addr, uint32_t num, const uint32_t* ptr
 int dc_core_halt(dctx_t* dc);
 int dc_core_resume(dctx_t* dc);
 int dc_core_step(dctx_t* dc);
+int dc_core_wait_halt(dctx_t* dc);
 
 int dc_core_reg_rd(dctx_t* dc, unsigned id, uint32_t* val);
 int dc_core_reg_wr(dctx_t* dc, unsigned id, uint32_t val);

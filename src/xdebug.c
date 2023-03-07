@@ -116,6 +116,8 @@ int parse(TOKEN* tok) {
 void debug_command(char *line) {
 	CC cc;
 
+	INFO("> %s\n", line);
+
 	while (*line && (*line <= ' ')) line++;
 	if (*line == '/') {
 		cc.count = 2;
@@ -205,9 +207,18 @@ static void *work_thread(void* arg) {
 }
 
 void handle_line(char *line, unsigned len) {
+	if (!strcmp(line, "@ESC@")) {
+		dc_interrupt(dc);
+		return;
+	}
+	if (len == 0) {
+		return;
+	}
 	if (busy) {
 		INFO("busy\n");
-	} else if (len < (sizeof(linebuf)-1)) {
+		return;
+	}
+	if (len < (sizeof(linebuf)-1)) {
 		memcpy(linebuf, line, len + 1);
 		busy = 1;
 		uint64_t n = 1;

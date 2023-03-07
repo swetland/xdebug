@@ -13,6 +13,8 @@ struct debug_context {
 	usb_handle* usb;
 	unsigned status;
 
+	volatile uint32_t attn;
+
 	// dap protocol info
 	uint32_t max_packet_count;
 	uint32_t max_packet_size;
@@ -68,4 +70,5 @@ static void dump(const char* str, const void* ptr, unsigned len) {
 #define dump(...) do {} while (0)
 #endif
 
+uint32_t dc_get_attn_value(DC* dc);
 

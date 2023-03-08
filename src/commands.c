@@ -59,6 +59,9 @@ int do_dw(DC* dc, CC* cc) {
 
 	if (cmd_arg_u32_opt(cc, 1, &addr, lastaddr)) return DBG_ERR;
 	if (cmd_arg_u32_opt(cc, 2, &count, lastcount)) return DBG_ERR;
+	if (count > 1024) count = 1024;
+	lastaddr = addr;
+	lastcount = count;
 
 	if (addr & 3) {
 		ERROR("address is not word-aligned\n");
@@ -90,6 +93,46 @@ int do_dw(DC* dc, CC* cc) {
 				addr, data[n], data[n+1], data[n+2], data[n+3]);
 			break;
 		}
+	}
+	return 0;
+}
+
+int do_db(DC* dc, CC* cc) {
+	uint32_t data[1024 + 8];
+	uint32_t addr, count, bytecount;
+	uint8_t *x;
+	unsigned n;
+
+	if (cmd_arg_u32_opt(cc, 1, &addr, lastaddr)) return DBG_ERR;
+	if (cmd_arg_u32_opt(cc, 2, &count, lastcount)) return DBG_ERR;
+	if (count > 1024) count = 1024;
+	lastaddr = addr;
+	lastcount = count;
+
+	bytecount = count;
+	x = (void*) data;
+	if (addr & 3) {
+		x += (addr & 3);
+		count += 4 - (addr & 3);
+		addr &= 3;
+	}
+	if (count & 3) {
+		count += 4 - (count & 3);
+	}
+	count /= 4;
+	if (count < 1) return 0;
+
+	if (dc_mem_rd_words(dc, addr, count, data)) return DBG_ERR;
+
+	while (bytecount > 0) {
+		n = (bytecount > 16) ? 16 : bytecount;
+		INFO("%08x:", addr);
+		bytecount -= n;
+		addr += n;
+		while (n-- > 0) {
+			INFO(" %02x", *x++);
+		}
+		INFO("\n");
 	}
 	return 0;
 }
@@ -143,8 +186,66 @@ int do_step(DC* dc, CC* cc) {
 	return read_show_regs(dc);
 }
 
+static uint32_t vcflags = 0;
+
 int do_reset(DC* dc, CC* cc) {
-	return -1; //return dc_core_reset(dc);
+	int r;
+	if ((r = dc_core_halt(dc)) < 0) {
+		return r;
+	}
+	if ((r = dc_mem_wr32(dc, DEMCR, DEMCR_TRCENA | vcflags)) < 0) {
+		return r;
+	}
+	if ((r = dc_mem_wr32(dc, AIRCR, AIRCR_VECTKEY | AIRCR_SYSRESETREQ)) < 0) {
+		return r;
+	}
+	return 0;
+}
+
+static int wait_for_stop(DC* dc) {
+	unsigned m = 0;
+	uint32_t val;
+	int r;
+	for (unsigned n = 0; n < 100; n++) {
+		if ((r = dc_mem_rd32(dc, DHCSR, &val)) < 0) {
+			dc_attach(dc, 0, 0, &val);
+		} else {
+			if (val & DHCSR_S_HALT) {
+				INFO("halt: CPU HALTED (%u,%u)\n", n, m);
+				uint32_t dfsr = -1, demcr = -1;
+				dc_mem_rd32(dc, DFSR, &dfsr);
+				dc_mem_rd32(dc, DEMCR, &demcr);
+				INFO("halt: DHCSR %08x, DFSR %08x, DEMCR %08x\n", val, dfsr, demcr);
+				return 0;
+			}
+			if (val & DHCSR_S_RESET_ST) {
+				m++;
+			}
+			dc_mem_wr32(dc, DHCSR, DHCSR_DBGKEY | DHCSR_C_HALT | DHCSR_C_DEBUGEN);
+		}
+	}
+	return DC_ERR_FAILED;
+}
+
+int do_reset_stop(DC* dc, CC* cc) {
+	int r;
+	if ((r = dc_core_halt(dc)) < 0) {
+		return r;
+	}
+	if ((r = wait_for_stop(dc)) < 0) {
+		return r;
+	}
+	if ((r = dc_mem_wr32(dc, DEMCR, DEMCR_VC_CORERESET | DEMCR_TRCENA | vcflags)) < 0) {
+		return r;
+	}
+	if ((r = dc_mem_wr32(dc, AIRCR, AIRCR_VECTKEY | AIRCR_SYSRESETREQ)) < 0) {
+		return r;
+	}
+	if ((r = wait_for_stop(dc)) < 0) {
+		INFO("reset-stop: CPU DID NOT HALT\n");
+		return r;
+	}
+	return 0;
 }
 
 int do_exit(DC* dc, CC* cc) {
@@ -159,22 +260,23 @@ struct {
 	int (*func)(DC* dc, CC* cc);
 	const char* help;
 } CMDS[] = {
-	{ "attach", do_attach, "connect to target" },
-	{ "stop",   do_stop,   "halt core" },
-	{ "halt",   do_stop,   NULL },
-	{ "go",     do_resume, NULL },
-	{ "resume", do_resume, "resume core" },
-	{ "step",   do_step,   "single-step core" },
-	{ "reset",  do_reset,  "reset core" },
-	{ "dw",     do_dw,     "dump words        dw <addr> [ <count> ]" },
-	//{ "db",     do_db,     "dump bytes        db <addr> [ <count> ]" },
-	{ "rd",     do_rd,     "read word         rd <addr>" },
-	{ "dr",     do_rd,     NULL },
-	{ "wr",     do_wr,     "write word        wr <addr> <val>" },
-	{ "regs",   do_regs,   "dump registers" },
-	{ "help",   do_help,   "list commands" },
-	{ "exit",   do_exit,   "exit debugger" },
-	{ "quit",   do_exit,   NULL },
+{ "attach",     do_attach,     "connect to target" },
+{ "stop",       do_stop,       "halt core" },
+{ "halt",       do_stop,       NULL },
+{ "go",         do_resume,     NULL },
+{ "resume",     do_resume,     "resume core" },
+{ "step",       do_step,       "single-step core" },
+{ "reset",      do_reset,      "reset core" },
+{ "reset-stop", do_reset_stop, "reset core and halt" },
+{ "dw",         do_dw,         "dump words            dw <addr> [ <count> ]" },
+{ "db",         do_db,         "dump bytes            db <addr> [ <count> ]" },
+{ "rd",         do_rd,         "read word             rd <addr>" },
+{ "dr",         do_rd,         NULL },
+{ "wr",         do_wr,         "write word            wr <addr> <val>" },
+{ "regs",       do_regs,       "dump registers" },
+{ "help",       do_help,       "list commands" },
+{ "exit",       do_exit,       "exit debugger" },
+{ "quit",       do_exit,       NULL },
 };
 
 int do_help(DC* dc, CC* cc) {

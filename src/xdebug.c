@@ -18,6 +18,8 @@
 
 #define MAX_ARGS 16
 
+static int debug = 0;
+
 static const char* NTH(unsigned n) {
 	switch (n) {
 	case 1: return "1st ";
@@ -285,7 +287,11 @@ void MSG(uint32_t flags, const char* fmt, ...) {
 	va_start(ap, fmt);
 	switch (flags) {
 	case mDEBUG:
-		tui_ch_printf(ch, "debug: ");
+		if (debug) {
+			tui_ch_printf(ch, "debug: ");
+		} else {
+			return;
+		}
 		break;
 	case mTRACE:
 		tui_ch_printf(ch, "trace: ");

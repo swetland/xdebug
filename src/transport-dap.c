@@ -468,7 +468,7 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 	uint32_t n;
 
 	_dc_attach(dc, 0, 0, &n);
-	INFO("IDCODE %08x\n", n);
+	INFO("attach: IDCODE %08x\n", n);
 
 	// If this is a RP2040, we need to connect in multidrop
 	// mode before doing anything else.
@@ -480,7 +480,7 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 	}
 
 	dc_dp_rd(dc, DP_CS, &n);
-	INFO("CTRL/STAT   %08x\n", n);
+	DEBUG("attach: CTRL/STAT   %08x\n", n);
 
 	// clear all sticky errors
 	dc_dp_wr(dc, DP_ABORT, DP_ABORT_ALLCLR);
@@ -493,8 +493,8 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 	dc_q_dp_rd(dc, DP_CS, &n);
 	dc_q_ap_rd(dc, MAP_CSW, &dc->map_csw_keep);
 	dc_q_exec(dc);
-	INFO("CTRL/STAT   %08x\n", n);
-	INFO("MAP.CSW     %08x\n", dc->map_csw_keep);
+	DEBUG("attach: CTRL/STAT   %08x\n", n);
+	DEBUG("attach: MAP.CSW     %08x\n", dc->map_csw_keep);
 
 	dc->map_csw_keep &= MAP_CSW_KEEP;
 

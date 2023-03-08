@@ -9,6 +9,9 @@ void tui_init(void);
 void tui_exit(void);
 int tui_handle_event(void (*callback)(char* line, unsigned len));
 
+void tui_status_rhs(const char* status);
+void tui_status_lhs(const char* status);
+
 // Write a line (or multiple lines separated by '\n') to the TUI log
 // Non-printing and non-ascii characters are ignored.
 // Lines larger than the TUI log max width (128) are truncated.

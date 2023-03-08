@@ -30,6 +30,10 @@ struct ux {
 	int w;
 	int h;
 	int invalid;
+	int running;
+
+	char status_lhs[32];
+	char status_rhs[32];
 
 	uint8_t cmd[MAXWIDTH + 1];
 	int len;
@@ -47,9 +51,29 @@ static void paint_titlebar(UX *ux) {
 }
 
 static void paint_infobar(UX *ux) {
-	for (int x = 0; x < ux->w; x++) {
-		tb_change_cell(x, ux->h - 2, '-', TB_DEFAULT | TB_REVERSE, TB_DEFAULT);
+	int lhw = strlen(ux->status_lhs);
+	int rhw = strlen(ux->status_rhs);
+	int gap = ux->w - 2 - lhw - rhw;
+	if (gap < 0) gap = 0;
+
+	unsigned fg = TB_DEFAULT | TB_REVERSE;
+	unsigned bg = TB_DEFAULT;
+	int x = 0;
+	int y = ux->h - 2;
+
+	tb_change_cell(x++, y, '-', fg, bg);
+	char *s = ux->status_lhs;
+	while (x < ux->w && lhw-- > 0) {
+		tb_change_cell(x++, y, *s++, fg, bg);
 	}
+	while (x < ux->w && gap-- > 0) {
+		tb_change_cell(x++, y, '-', fg, bg);
+	}
+	s = ux->status_rhs;
+	while (x < ux->w && rhw-- > 0) {
+		tb_change_cell(x++, y, *s++, fg, bg);
+	}
+	tb_change_cell(x, y, '-', fg, bg);
 }
 
 static void paint_cmdline(UX *ux) {
@@ -174,6 +198,7 @@ static UX ux = {
 		.prev = &ux.list,
 		.next = &ux.list,
 	},
+	.running = 1,
 };
 
 void tui_init(void) {
@@ -186,7 +211,10 @@ void tui_init(void) {
 }
 
 void tui_exit(void) {
+	pthread_mutex_lock(&ux.lock);
 	tb_shutdown();
+	ux.running = 0;
+	pthread_mutex_unlock(&ux.lock);
 }
 
 int tui_handle_event(void (*cb)(char*, unsigned)) {
@@ -196,7 +224,9 @@ int tui_handle_event(void (*cb)(char*, unsigned)) {
 	int r;
 
 	pthread_mutex_lock(&ux.lock);
-	tb_present();
+	if (ux.running) {
+		tb_present();
+	}
 	pthread_mutex_unlock(&ux.lock);
 
 	if ((tb_poll_event(&ev) < 0) ||
@@ -205,7 +235,11 @@ int tui_handle_event(void (*cb)(char*, unsigned)) {
 	}
 
 	pthread_mutex_lock(&ux.lock);
-	r = handle_event(&ux, &ev, line, &len);
+	if (ux.running) {
+		r = handle_event(&ux, &ev, line, &len);
+	} else {
+		r = -1;
+	}
 	pthread_mutex_unlock(&ux.lock);
 
 	if (r == 1) {
@@ -214,6 +248,26 @@ int tui_handle_event(void (*cb)(char*, unsigned)) {
 	} else {
 		return r;
 	}
+}
+
+void tui_status_rhs(const char* status) {
+	pthread_mutex_lock(&ux.lock);
+	if (ux.running) {
+		strncpy(ux.status_rhs, status, sizeof(ux.status_rhs) - 1);
+		paint_infobar(&ux);
+		tb_present();
+	}
+	pthread_mutex_unlock(&ux.lock);
+}
+
+void tui_status_lhs(const char* status) {
+	pthread_mutex_lock(&ux.lock);
+	if (ux.running) {
+		strncpy(ux.status_lhs, status, sizeof(ux.status_lhs) - 1);
+		paint_infobar(&ux);
+		tb_present();
+	}
+	pthread_mutex_unlock(&ux.lock);
 }
 
 static void tui_logline(uint8_t* text, unsigned len) {
@@ -225,17 +279,17 @@ static void tui_logline(uint8_t* text, unsigned len) {
 	line->bg = TB_DEFAULT;
 
 	pthread_mutex_lock(&ux.lock);
+	if (ux.running) {
+		// add line to the log
+		line->prev = ux.list.prev;
+		line->next = &ux.list;
+		line->prev->next = line;
+		ux.list.prev = line;
 
-	// add line to the log
-	line->prev = ux.list.prev;
-	line->next = &ux.list;
-	line->prev->next = line;
-	ux.list.prev = line;
-
-	// refresh the log
-	paint_log(&ux);
-	tb_present();
-
+		// refresh the log
+		paint_log(&ux);
+		tb_present();
+	}
 	pthread_mutex_unlock(&ux.lock);
 }
 

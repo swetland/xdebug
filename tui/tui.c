@@ -11,6 +11,7 @@
 #include <termbox.h>
 
 #define MAXWIDTH 128
+#define MAXCMD (MAXWIDTH - 1)
 
 typedef struct line LINE;
 typedef struct ux UX;
@@ -35,11 +36,34 @@ struct ux {
 	char status_lhs[32];
 	char status_rhs[32];
 
-	uint8_t cmd[MAXWIDTH + 1];
-	int len;
-
 	LINE list;
+
+	// edit buffer and head of the circular history list
+	LINE history;
+
+	// points at active edit buffer
+	LINE *cmd;
+
+	// points at the line *before* the bottom-most list line
+	LINE *display;
 };
+
+
+static void tui_add_cmd(UX* ux, uint8_t* text, unsigned len) {
+	LINE* line = malloc(sizeof(LINE));
+	if (line == NULL) {
+		return;
+	}
+	line->len = len;
+	line->fg = line->bg = TB_DEFAULT;
+	memcpy(line->text, text, len);
+
+	line->prev = ux->history.prev;
+	line->next = &ux->history;
+
+	line->prev->next = line;
+	ux->history.prev = line;
+}
 
 static void paint(int x, int y, const char* str) {
 	while (*str) {
@@ -77,17 +101,18 @@ static void paint_infobar(UX *ux) {
 }
 
 static void paint_cmdline(UX *ux) {
-	uint8_t* ch = ux->cmd;
+	uint8_t* ch = ux->cmd->text;
+	int len = ux->cmd->len;
 	int y = ux->h - 1;
 	int w = ux->w;
 	for (int x = 0; x < w; x++) {
-		if (x < ux->len) {
+		if (x < len) {
 			tb_change_cell(x, y, *ch++, TB_DEFAULT, TB_DEFAULT);
 		} else {
 			tb_change_cell(x, y, ' ', TB_DEFAULT, TB_DEFAULT);
 		}
 	}
-	tb_set_cursor(ux->len >= w ? w - 1 : ux->len, y);
+	tb_set_cursor(len >= w ? w - 1 : len, y);
 }
 
 static void paint_log(UX *ux) {
@@ -96,7 +121,7 @@ static void paint_log(UX *ux) {
 	int w = ux->w;
 	uint8_t c;
 
-	for (LINE* line = list->prev; (line != list) && (y >= 0); line = line->prev) {
+	for (LINE* line = ux->display->prev; (line != list) && (y >= 0); line = line->prev) {
 		for (int x = 0; x < w; x++) {
 			c = (x < line->len) ? line->text[x] : ' ';
 			tb_change_cell(x, y, c, line->fg, line->bg);
@@ -120,7 +145,35 @@ static int repaint(UX* ux) {
 	paint_infobar(ux);
 	paint_cmdline(ux);
 	paint_log(ux);
+
+	if (ux->display != &ux->list) {
+		int x = ux->w - 8;
+		char *s = " SCROLL ";
+		while (*s != 0) {
+			tb_change_cell(x++, 0, *s++, TB_REVERSE | TB_DEFAULT, TB_DEFAULT);
+		}
+	}
 	return 0;
+}
+
+static void tui_scroll(UX* ux, int delta) {
+	LINE* list = &ux->list;
+	LINE* line = ux->display;
+
+	while (delta > 0) {
+		if (line->prev == list) goto done;
+		delta--;
+		line = line->prev;
+	}
+	while (delta < 0) {
+		if (line == list) goto done;
+		delta++;
+		line = line->next;
+	}
+done:
+	ux->display = line;
+	repaint(ux);
+	tb_present();
 }
 
 static int handle_event(UX* ux, struct tb_event* ev, char* line, unsigned* len) {
@@ -142,32 +195,65 @@ static int handle_event(UX* ux, struct tb_event* ev, char* line, unsigned* len) 
 		if (ev->ch > 255) {
 			break;
 		}
-		if (ux->len >= MAXWIDTH) {
+		if (ux->cmd->len >= MAXCMD) {
 			break;
 		}
-		ux->cmd[ux->len++] = ev->ch;
+		ux->cmd->text[ux->cmd->len++] = ev->ch;
 		paint_cmdline(ux);
 		break;
 	case TB_KEY_BACKSPACE:
 	case TB_KEY_BACKSPACE2:
-		if (ux->len > 0 ) {
-			ux->len--;
+		if (ux->cmd->len > 0 ) {
+			ux->cmd->len--;
 			paint_cmdline(ux);
 		}
 		break;
 	case TB_KEY_ENTER: {
 		// pass commandline out to caller
-		*len = ux->len;
-		memcpy(line, ux->cmd, ux->len);
-		line[ux->len] = 0;
+		*len = ux->cmd->len;
+		memcpy(line, ux->cmd->text, ux->cmd->len);
+		line[ux->cmd->len] = 0;
 
-		// update display, clearing commandline
-		ux->len = 0;
+		// add new command to history
+		tui_add_cmd(ux, ux->cmd->text, ux->cmd->len);
+
+		// reset to an empty edit buffer
+		ux->cmd = &ux->history;
+		ux->cmd->len = 0;
+
+		// update display
 		paint_cmdline(ux);
 		tb_present();
 
 		return 1;
 	}
+	case TB_KEY_ARROW_LEFT:
+	case TB_KEY_ARROW_RIGHT:
+	case TB_KEY_HOME:
+	case TB_KEY_END:
+	case TB_KEY_INSERT:
+	case TB_KEY_DELETE:
+		break;
+	case TB_KEY_ARROW_UP:
+		if (ux->cmd->prev != &ux->history) {
+			ux->cmd = ux->cmd->prev;
+			paint_cmdline(ux);
+			tb_present();
+		}
+		break;
+	case TB_KEY_ARROW_DOWN:
+		if (ux->cmd != &ux->history) {
+			ux->cmd = ux->cmd->next;
+			paint_cmdline(ux);
+			tb_present();
+		}
+		break;
+	case TB_KEY_PGUP:
+		tui_scroll(ux, ux->h - 3);
+		break;
+	case TB_KEY_PGDN:
+		tui_scroll(ux, -(ux->h - 3));
+		break;
 	case TB_KEY_ESC: {
 		*len = 5;
 		memcpy(line, "@ESC@", 6);
@@ -198,6 +284,12 @@ static UX ux = {
 		.prev = &ux.list,
 		.next = &ux.list,
 	},
+	.history = {
+		.prev = &ux.history,
+		.next = &ux.history,
+	},
+	.cmd = &ux.history,
+	.display = &ux.list,
 	.running = 1,
 };
 
@@ -219,7 +311,7 @@ void tui_exit(void) {
 
 int tui_handle_event(void (*cb)(char*, unsigned)) {
 	struct tb_event ev;
-	char line[MAXWIDTH + 1];
+	char line[MAXWIDTH];
 	unsigned len;
 	int r;
 

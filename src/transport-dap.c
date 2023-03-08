@@ -20,13 +20,20 @@ uint32_t dc_get_attn_value(DC *dc) {
 	return dc->attn;
 }
 
+void dc_set_status(DC* dc, uint32_t status) {
+	dc->status = status;
+	if (dc->status_callback) {
+		dc->status_callback(dc->status_cookie, status);
+	}
+}
+
 static void usb_failure(DC* dc, int status) {
 	ERROR("usb_failure status %d usb %p\n", status, dc->usb);
 	if (dc->usb != NULL) {
 		usb_close(dc->usb);
 		dc->usb = NULL;
 	}
-	dc->status = DC_OFFLINE;
+	dc_set_status(dc, DC_OFFLINE);
 }
 
 static int dap_get_info(DC* dc, unsigned di, void *out, unsigned minlen, unsigned maxlen) {
@@ -251,7 +258,9 @@ int dc_q_exec(DC* dc) {
 	int r = _dc_q_exec(dc);
 	if (r == DC_ERR_SWD_FAULT) {
 		// clear all sticky errors
-		dc_dp_wr(dc, DP_ABORT, DP_ABORT_ALLCLR);
+		if (dc_dp_wr(dc, DP_ABORT, DP_ABORT_ALLCLR) < 0) {
+			dc_set_status(dc, DC_DETACHED);
+		}
 	}
 	return r;
 }
@@ -498,7 +507,7 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 
 	dc->map_csw_keep &= MAP_CSW_KEEP;
 
-	dc->status = DC_ATTACHED;
+	dc_set_status(dc, DC_ATTACHED);
 
 	return 0;
 }
@@ -619,23 +628,28 @@ static int dap_configure(DC* dc) {
 	return DC_OK;
 }
 
-static void dc_connect(DC* dc) {
+static int dc_connect(DC* dc) {
 	if ((dc->usb = usb_connect()) != NULL) {
-		dc->status = DC_UNCONFIG;
 		if (dap_configure(dc) == 0) {
-			dc->status = DC_DETACHED;
+			dc_set_status(dc, DC_DETACHED);
+		} else {
+			dc_set_status(dc, DC_UNCONFIG);
 		}
+		return 0;
 	}
+	return DC_ERR_FAILED;
 }
 
-int dc_create(DC** out) {
+int dc_create(DC** out, void (*cb)(void *cookie, uint32_t status), void *cookie) {
 	DC* dc;
 
 	if ((dc = calloc(1, sizeof(DC))) == NULL) {
 		return DC_ERR_FAILED;
 	}
+	dc->status_callback = cb;
+	dc->status_cookie = cookie;
 	*out = dc;
-	dc->status = DC_OFFLINE;
+	dc_set_status(dc, DC_OFFLINE);
 	dc_connect(dc);
 	return 0;
 }
@@ -643,19 +657,22 @@ int dc_create(DC** out) {
 int dc_periodic(DC* dc) {
 	switch (dc->status) {
 	case DC_OFFLINE:
-		dc_connect(dc);
-		return 1000;
+		if (dc_connect(dc) < 0) {
+			return 500;
+		} else {
+			return 100;
+		}
 	case DC_ATTACHED: {
 		uint32_t n;
 		int r = dc_dp_rd(dc, DP_CS, &n);
 		if (r == DC_ERR_IO) {
-			dc->status = DC_OFFLINE;
+			dc_set_status(dc, DC_OFFLINE);
 			ERROR("offline\n");
 		} else if (r < 0) {
-			dc->status = DC_DETACHED;
+			dc_set_status(dc, DC_DETACHED);
 			ERROR("detached\n");
 		}
-		return 250;
+		return 100;
 	}
 	case DC_FAILURE:
 	case DC_UNCONFIG:
@@ -663,7 +680,7 @@ int dc_periodic(DC* dc) {
 		// ping the probe to see if USB is still connected
 		uint8_t buf[256 + 2];
 		dap_get_info(dc, DI_Protocol_Version, buf, 0, 255);
-		return 1000;
+		return 500;
 	}
 	default:
 		return 1000;

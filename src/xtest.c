@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
 	uint32_t n = 0;
 
 	dctx_t* dc;
-	if (dc_create(&dc) < 0) {
+	if (dc_create(&dc, 0, 0) < 0) {
 		return -1;
 	}
 

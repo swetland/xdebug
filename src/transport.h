@@ -67,7 +67,14 @@ int dc_ap_rd(dctx_t* dc, unsigned apaddr, uint32_t* val);
 int dc_ap_wr(dctx_t* dc, unsigned apaddr, uint32_t val);
 
 // create debug connection
-int dc_create(dctx_t** dc);
+int dc_create(dctx_t** dc, void (*cb)(void *cookie, uint32_t status), void *cookie);
+
+// status values
+#define DC_ATTACHED 0 // attached and ready to do txns
+#define DC_FAILURE  1 // last txn failed, need to re-attach
+#define DC_DETACHED 2 // have not yet attached
+#define DC_UNCONFIG 3 // configure failed
+#define DC_OFFLINE  4 // usb connection not available
 
 // attempt to attach to the debug target
 int dc_attach(dctx_t* dc, unsigned flags, uint32_t tgt, uint32_t* idcode);

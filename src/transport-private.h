@@ -14,6 +14,8 @@ struct debug_context {
 	unsigned status;
 
 	volatile uint32_t attn;
+	void (*status_callback)(void *cookie, uint32_t status);
+	void *status_cookie;
 
 	// dap protocol info
 	uint32_t max_packet_count;
@@ -46,12 +48,6 @@ struct debug_context {
 };
 
 typedef struct debug_context DC;
-
-#define DC_ATTACHED 0 // attached and ready to do txns
-#define DC_FAILURE  1 // last txn failed, need to re-attach
-#define DC_DETACHED 2 // have not yet attached
-#define DC_UNCONFIG 3 // configure failed
-#define DC_OFFLINE  4 // usb connection not available
 
 #define INVALID 0xFFFFFFFFU
 

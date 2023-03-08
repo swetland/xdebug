@@ -190,6 +190,8 @@ static void *work_thread(void* arg) {
 			exit(-1);
 		}
 		if (r == 0) {
+			char statusline[64];
+			statusline[0] = 0;
 			timeout = dc_periodic(dc);
 			if (timeout < 100) {
 				timeout = 100;
@@ -206,6 +208,24 @@ static void *work_thread(void* arg) {
 		}
 	}
 	return 0;
+}
+
+const char* status_text(uint32_t status) {
+	switch (status) {
+	case DC_ATTACHED:
+		return "[ATTACHED]";
+	case DC_FAILURE:
+	case DC_DETACHED:
+	case DC_UNCONFIG:
+		return "[DETACHED]";
+	case DC_OFFLINE:
+	default:
+		return "[OFFLINE]";
+	}
+}
+
+void handle_status(void* cookie, uint32_t status) {
+	tui_status_rhs(status_text(status));
 }
 
 void handle_line(char *line, unsigned len) {
@@ -264,7 +284,7 @@ int main(int argc, char** argv) {
 
 	tui_init();
 	tui_ch_create(&ch, 0);
-	dc_create(&dc);
+	dc_create(&dc, handle_status, NULL);
 
 	pthread_t t;
 	if (pthread_create(&t, NULL, work_thread, NULL) != 0) {

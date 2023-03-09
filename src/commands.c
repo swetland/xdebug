@@ -11,7 +11,7 @@
 
 int do_attach(DC* dc, CC* cc) {
 	uint32_t n;
-	dc_set_clock(dc, 4000000);
+	dc_set_clock(dc, 1000000);
 	return dc_attach(dc, 0, 0, &n);
 }
 
@@ -255,6 +255,9 @@ int do_exit(DC* dc, CC* cc) {
 
 int do_help(DC* dc, CC* cc);
 
+int do_upload(DC* dc, CC* cc);
+int do_download(DC* dc, CC* cc);
+
 struct {
 	const char* name;
 	int (*func)(DC* dc, CC* cc);
@@ -274,6 +277,8 @@ struct {
 { "dr",         do_rd,         NULL },
 { "wr",         do_wr,         "write word            wr <addr> <val>" },
 { "regs",       do_regs,       "dump registers" },
+{ "download",   do_download,   "write file to memory  download <file> <addr>" },
+{ "upload",     do_upload,     "read memory to file   upload <file> <addr> <len>" },
 { "help",       do_help,       "list commands" },
 { "exit",       do_exit,       "exit debugger" },
 { "quit",       do_exit,       NULL },

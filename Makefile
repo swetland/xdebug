@@ -69,7 +69,8 @@ COMMON := src/transport-arm-debug.c src/transport-dap.c src/usb.c
 XTEST_SRCS := src/xtest.c $(COMMON)
 XTEST_OBJS := $(addprefix out/,$(patsubst %.c,%.o,$(filter %.c,$(XTEST_SRCS))))
 
-XDEBUG_SRCS := src/xdebug.c src/commands.c $(COMMON)
+XDEBUG_SRCS := src/xdebug.c $(COMMON)
+XDEBUG_SRCS += src/commands.c src/commands-file.c src/commands-agent.c
 XDEBUG_SRCS += tui/tui.c termbox/termbox.c termbox/utf8.c gen/builtins.c
 XDEBUG_OBJS := $(addprefix out/,$(patsubst %.c,%.o,$(filter %.c,$(XDEBUG_SRCS))))
 

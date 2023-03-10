@@ -105,3 +105,7 @@
 #define MAP_CSW_DBG_SW_EN       0x80000000U // Debug SW Access Enable
 
 #define MAP_CSW_KEEP            0xFF00FF00U // preserve mode/type/prot fields
+
+
+#define AHB_CSW_PROT_PRIV       0x02000000U
+#define AHB_CSW_MASTER_DEBUG    0x20000000U

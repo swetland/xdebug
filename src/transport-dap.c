@@ -505,7 +505,10 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 	DEBUG("attach: CTRL/STAT   %08x\n", n);
 	DEBUG("attach: MAP.CSW     %08x\n", dc->map_csw_keep);
 
-	dc->map_csw_keep &= MAP_CSW_KEEP;
+	//preserving existing settings is insufficient
+	//dc->map_csw_keep &= MAP_CSW_KEEP;
+
+	dc->map_csw_keep = AHB_CSW_PROT_PRIV | AHB_CSW_MASTER_DEBUG;
 
 	dc_set_status(dc, DC_ATTACHED);
 

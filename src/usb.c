@@ -94,7 +94,8 @@ usb_handle *usb_try_open(libusb_device* dev, const char* sn,
 	}
 
 	if (libusb_open(dev, &usb->dev) < 0) {
-		goto fail;
+		free(usb);
+		return NULL;
 	}
 
 	if (sn && (isn != 0)) {
@@ -129,7 +130,7 @@ usb_handle *usb_try_open(libusb_device* dev, const char* sn,
 	r = libusb_claim_interface(usb->dev, ino);
 	if (r < 0) {
 		fprintf(stderr, "failed to claim interface #%d\n", ino);
-		goto close_fail;
+		goto fail;
 	}
 
 #ifdef __APPLE__
@@ -141,9 +142,8 @@ usb_handle *usb_try_open(libusb_device* dev, const char* sn,
 
 	return usb;
 
-close_fail:
-	libusb_close(usb->dev);
 fail:
+	libusb_close(usb->dev);
 	free(usb);
 	return NULL;
 }
@@ -238,6 +238,10 @@ usb_handle *usb_open(unsigned vid, unsigned pid, const char* sn) {
 			}
 		}
 		if (vid == 0) {
+			if (iifc == 0) {
+				// no interface string at all
+				continue;
+			}
 			// if we're wildcarding it, check interface
 			sprintf(path + len, ":%u.%u/interface", 1, 0);
 			if (read_sysfs(path, text, sizeof(text)) == 0) {
@@ -272,12 +276,7 @@ int usb_ctrl(usb_handle *usb, void *data,
 	if (usb == NULL) {
 		return LIBUSB_ERROR_NO_DEVICE;
 	}
-	int r = libusb_control_transfer(usb->dev, typ, req, val, idx, data, len, 5000);
-	if (r < 0) {
-		return -1;
-	} else {
-		return r;
-	}
+	return libusb_control_transfer(usb->dev, typ, req, val, idx, data, len, 5000);
 }
 
 int usb_read(usb_handle *usb, void *data, int len) {
@@ -287,7 +286,7 @@ int usb_read(usb_handle *usb, void *data, int len) {
 	int xfer = len;
 	int r = libusb_bulk_transfer(usb->dev, usb->ei, data, len, &xfer, 5000);
 	if (r < 0) {
-		return -1;
+		return r;
 	}
 	return xfer;
 }
@@ -299,7 +298,7 @@ int usb_read_forever(usb_handle *usb, void *data, int len) {
 	int xfer = len;
 	int r = libusb_bulk_transfer(usb->dev, usb->ei, data, len, &xfer, 0);
 	if (r < 0) {
-		return -1;
+		return r;
 	}
 	return xfer;
 }
@@ -311,7 +310,7 @@ int usb_write(usb_handle *usb, const void *data, int len) {
 	int xfer = len;
 	int r = libusb_bulk_transfer(usb->dev, usb->eo, (void*) data, len, &xfer, 5000);
 	if (r < 0) {
-		return -1;
+		return r;
 	}
 	return xfer;
 }

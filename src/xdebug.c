@@ -190,8 +190,6 @@ static void *work_thread(void* arg) {
 			exit(-1);
 		}
 		if (r == 0) {
-			char statusline[64];
-			statusline[0] = 0;
 			timeout = dc_periodic(dc);
 			if (timeout < 100) {
 				timeout = 100;
@@ -224,6 +222,18 @@ const char* status_text(uint32_t status) {
 	}
 }
 
+void debugger_exit(void) {
+	// tell threads to exit
+	running = 0;
+
+	// cancel long lived operations
+	dc_interrupt(dc);
+
+	// wake debugger thread
+	uint64_t n = 1;
+	if (write(efd, &n, sizeof(n))) {}
+}
+
 void handle_status(void* cookie, uint32_t status) {
 	tui_status_rhs(status_text(status));
 }
@@ -231,6 +241,10 @@ void handle_status(void* cookie, uint32_t status) {
 void handle_line(char *line, unsigned len) {
 	if (!strcmp(line, "@ESC@")) {
 		dc_interrupt(dc);
+		return;
+	}
+	if (!strcmp(line, "quit") || !strcmp(line, "exit")) {
+		debugger_exit();
 		return;
 	}
 	if (len == 0) {
@@ -292,14 +306,14 @@ int main(int argc, char** argv) {
 		return -1;
 	}
 
-	while (tui_handle_event(handle_line) == 0) ;
+	while (running && (tui_handle_event(handle_line) == 0)) ;
+
+	debugger_exit();
+
+	pthread_join(t, NULL);
+	
 	tui_exit();
 	return 0;
-}
-
-void debugger_exit(void) {
-	tui_exit();
-	exit(0);
 }
 
 void MSG(uint32_t flags, const char* fmt, ...) {

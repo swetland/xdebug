@@ -91,3 +91,36 @@
 #define DEMCR_TRCENA       0x01000000 // Enable DWT and ITM *
 // v6M only has *'d bits
 
+
+#define FP_CTRL              0xE0002000
+#define FP_REMAP             0xE0002004
+#define FP_COMP(n)           (0xE0002008 + 8*(n))
+
+#define FP_CTRL_REV_MASK     0xF0000000
+#define FP_CTRL_REV_V1       0x00000000
+#define FP_CTRL_REV_V2       0x10000000
+#define FP_CTRL_CODE_H_MASK  0x00007000
+#define FP_CTRL_CODE_H_SHIFT 8
+#define FP_CTRL_LIT_MASK     0x00000F00
+#define FP_CTRL_LIT_SHIFT    8
+#define FP_CTRL_CODE_L_MASK  0x000000F0
+#define FP_CTRL_CODE_L_SHIFT 4
+#define FP_CTRL_KEY          0x00000002
+#define FP_CTRL_ENABLE       0x00000001
+
+#define FP_REMAP_RMPSPT      0x20000000
+
+#define FP1_COMP_REMAP       0x00000000  // REMAP
+#define FP1_COMP_BK_00       0x40000000 // break on 000:COMP:00
+#define FP1_COMP_BK_10       0x80000000 // break on 000:COMP:10
+#define FP1_COMP_BK_x0       0xC0000000 // break on 000:COMP:x0
+#define FP1_COMP_EN          0x00000001
+
+#define FP2_COMP_DISABLE     0x00000000
+#define FP2_COMP_BP_EN       0x00000001
+#define FP2_COMP_FP_EN       0x80000000
+#define FP2_COMP_BP_MASK     0xFFFFFFFE // allowed BP addr bits
+#define FP2_COMP_FP_MASK     0x1FFFFFFE // allowed FP addr bits
+
+
+

@@ -12,6 +12,7 @@
 struct debug_context {
 	usb_handle* usb;
 	unsigned status;
+	uint32_t flags;
 
 	volatile uint32_t attn;
 	void (*status_callback)(void *cookie, uint32_t status);

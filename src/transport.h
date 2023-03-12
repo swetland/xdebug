@@ -14,6 +14,12 @@ int dc_periodic(dctx_t* dc);
 
 void dc_interrupt(dctx_t* dc);
 
+uint32_t dc_flags(dctx_t* dc, uint32_t clr, uint32_t set);
+
+#define DCF_POLL        0x00000001 // query state while attached
+#define DCF_AUTO_ATTACH 0x00000002 // attach on new command if detached
+#define DCF_AUTO_CONFIG 0x00000004 // configure some flags based on IDCODE
+
 #define DC_OK               0
 #define DC_ERR_FAILED      -1  // generic internal failure
 #define DC_ERR_BAD_PARAMS  -2  // Invalid parameters

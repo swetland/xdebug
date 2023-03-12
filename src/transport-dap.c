@@ -12,6 +12,11 @@
 #include "transport.h"
 #include "transport-private.h"
 
+uint32_t dc_flags(dctx_t* dc, uint32_t clr, uint32_t set) {
+	dc->flags = (dc->flags & (~clr)) | set;
+	return dc->flags;
+}
+
 void dc_interrupt(DC *dc) {
 	dc->attn++;
 }
@@ -165,9 +170,19 @@ static void dc_q_clear(DC* dc) {
 	dc->map_tar_cache = INVALID;
 }
 
+static inline void _dc_q_init(DC* dc) {
+	// no side-effects version for use from dc_attach(), etc
+	dc_q_clear(dc);
+}
+
 void dc_q_init(DC* dc) {
 	// TODO: handle error cleanup, re-attach, etc
 	dc_q_clear(dc);
+
+	if ((dc->status == DC_DETACHED) && (dc->flags & DCF_AUTO_ATTACH)) {
+		INFO("attach: auto\n");
+		dc->qerror = dc_attach(dc, 0, 0, 0);
+	}
 }
 
 // unpack the status bits into a useful status code
@@ -467,7 +482,7 @@ static int _dc_attach(DC* dc, unsigned flags, uint32_t tgt, uint32_t* idcode) {
 
 	// Issue a bare DP.IDR read, as required after a line reset
 	// or line reset + target select
-	dc_q_init(dc);
+	_dc_q_init(dc);
 	dc_q_raw_rd(dc, XFER_DP | XFER_RD | XFER_00, idcode);
 	int r = _dc_q_exec(dc);
 	return r;
@@ -478,6 +493,9 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 
 	_dc_attach(dc, 0, 0, &n);
 	INFO("attach: IDCODE %08x\n", n);
+	if (idcode != NULL) {
+		*idcode = n;
+	}
 
 	// If this is a RP2040, we need to connect in multidrop
 	// mode before doing anything else.
@@ -487,15 +505,19 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 			_dc_attach(dc, DC_MULTIDROP, 0x01002927, &n);
 		}
 	}
-
-	dc_dp_rd(dc, DP_CS, &n);
+	
+	_dc_q_init(dc);
+	dc_q_dp_rd(dc, DP_CS, &n);
+	dc_q_exec(dc);
 	DEBUG("attach: CTRL/STAT   %08x\n", n);
 
 	// clear all sticky errors
-	dc_dp_wr(dc, DP_ABORT, DP_ABORT_ALLCLR);
+	_dc_q_init(dc);
+	dc_q_dp_wr(dc, DP_ABORT, DP_ABORT_ALLCLR);
+	dc_q_exec(dc);
 
 	// power up and wait for ack
-	dc_q_init(dc);
+	_dc_q_init(dc);
 	dc_q_set_mask(dc, DP_CS_CDBGPWRUPACK | DP_CS_CSYSPWRUPACK);
 	dc_q_dp_wr(dc, DP_CS, DP_CS_CDBGPWRUPREQ | DP_CS_CSYSPWRUPREQ);
 	dc_q_dp_match(dc, DP_CS, DP_CS_CDBGPWRUPACK | DP_CS_CSYSPWRUPACK);
@@ -511,6 +533,10 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 	dc->map_csw_keep = AHB_CSW_PROT_PRIV | AHB_CSW_MASTER_DEBUG;
 
 	dc_set_status(dc, DC_ATTACHED);
+
+	if (dc->flags & DCF_AUTO_CONFIG) {
+		// ...
+	}
 
 	return 0;
 }
@@ -651,6 +677,7 @@ int dc_create(DC** out, void (*cb)(void *cookie, uint32_t status), void *cookie)
 	}
 	dc->status_callback = cb;
 	dc->status_cookie = cookie;
+	dc->flags = DCF_POLL | DCF_AUTO_ATTACH;
 	*out = dc;
 	dc_set_status(dc, DC_OFFLINE);
 	dc_connect(dc);
@@ -665,18 +692,19 @@ int dc_periodic(DC* dc) {
 		} else {
 			return 100;
 		}
-	case DC_ATTACHED: {
-		uint32_t n;
-		int r = dc_dp_rd(dc, DP_CS, &n);
-		if (r == DC_ERR_IO) {
-			dc_set_status(dc, DC_OFFLINE);
-			ERROR("offline\n");
-		} else if (r < 0) {
-			dc_set_status(dc, DC_DETACHED);
-			ERROR("detached\n");
+	case DC_ATTACHED:
+		if (dc->flags & DCF_POLL) {
+			uint32_t n;
+			int r = dc_dp_rd(dc, DP_CS, &n);
+			if (r == DC_ERR_IO) {
+				dc_set_status(dc, DC_OFFLINE);
+				ERROR("offline\n");
+			} else if (r < 0) {
+				dc_set_status(dc, DC_DETACHED);
+				ERROR("detached\n");
+			}
 		}
 		return 100;
-	}
 	case DC_FAILURE:
 	case DC_UNCONFIG:
 	case DC_DETACHED: {

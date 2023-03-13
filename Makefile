@@ -2,7 +2,7 @@
 all: out/xdebug out/xtest
 
 CFLAGS := -Wall -g -O1
-CFLAGS += -Itui -Itermbox -D_XOPEN_SOURCE
+CFLAGS += -Itui -Itermbox -Iinclude -D_XOPEN_SOURCE
 LIBS := -lusb-1.0
 
 # TOOLCHAIN := arm-none-eabi-

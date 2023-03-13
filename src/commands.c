@@ -320,11 +320,6 @@ int do_exit(DC* dc, CC* cc) {
 	return 0;
 }
 
-int do_help(DC* dc, CC* cc);
-
-int do_upload(DC* dc, CC* cc);
-int do_download(DC* dc, CC* cc);
-
 struct {
 	const char* name;
 	int (*func)(DC* dc, CC* cc);
@@ -344,6 +339,9 @@ struct {
 { "dr",         do_rd,         NULL },
 { "wr",         do_wr,         "write word            wr <addr> <val>" },
 { "regs",       do_regs,       "dump registers" },
+{ "setarch",    do_setarch,    "select flash agent    setarch <name>" },
+{ "flash",      do_flash,      "write file to flash   flash <file> <addr>" },
+{ "erase",      do_erase,      "erase flash           erase all | erase <addr> <len>" },
 { "download",   do_download,   "write file to memory  download <file> <addr>" },
 { "upload",     do_upload,     "read memory to file   upload <file> <addr> <len>" },
 { "setclock",   do_setclock,   "set SWD clock freq    setclock <mhz>" },

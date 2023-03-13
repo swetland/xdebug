@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <stdarg.h>
+#include <stddef.h>
 
 void MSG(uint32_t flags, const char* fmt, ...)
 	__attribute__ ((format (printf, 2, 3)));
@@ -35,3 +36,22 @@ int cmd_argc(CC* cc);
 typedef struct debug_context DC;
 void debugger_command(DC* dc, CC* cc);
 void debugger_exit(void);
+
+// commands.c
+int do_help(DC* dc, CC* cc);
+int do_attach(DC* dc, CC* cc);
+int do_reset_stop(DC* dc, CC* cc);
+
+// commands-file.c
+int do_upload(DC* dc, CC* cc);
+int do_download(DC* dc, CC* cc);
+
+// commands-agent.c
+int do_setarch(DC* dc, CC* cc);
+int do_flash(DC* dc, CC* cc);
+int do_erase(DC* dc, CC* cc);
+
+void *load_file(const char* fn, size_t *sz);
+void *get_builtin_file(const char *name, size_t *sz);
+const char *get_builtin_filename(unsigned n);
+

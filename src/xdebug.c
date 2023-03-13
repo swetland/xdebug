@@ -49,6 +49,10 @@ const char* cmd_name(CC* cc) {
 	return cc->tok[0].s;
 }
 
+int cmd_argc(CC* cc) {
+	return cc->count;
+}
+
 int cmd_arg_u32(CC* cc, unsigned nth, uint32_t* out) {
 	if (nth >= cc->count) {
 		ERROR("%s: missing %sargument\n", cc->tok[0].s, NTH(nth));

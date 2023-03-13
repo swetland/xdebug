@@ -30,6 +30,7 @@ int cmd_arg_u32(CC* cc, unsigned nth, uint32_t* out);
 int cmd_arg_u32_opt(CC* cc, unsigned nth, uint32_t* out, uint32_t val);
 int cmd_arg_str(CC* cc, unsigned nth, const char** out);
 int cmd_arg_str_opt(CC* cc, unsigned nth, const char** out, const char* str);
+int cmd_argc(CC* cc);
 
 typedef struct debug_context DC;
 void debugger_command(DC* dc, CC* cc);

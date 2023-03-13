@@ -260,6 +260,61 @@ int do_reset_stop(DC* dc, CC* cc) {
 	return 0;
 }
 
+static struct {
+	uint32_t flag;
+	const char* name;
+	const char* info;
+} FLAGS[] = {
+	{ DCF_POLL,        "poll",        "verify target state while attached" },
+	{ DCF_AUTO_ATTACH, "auto-attach", "automatically attach to target on command" },
+	{ DCF_AUTO_CONFIG, "auto-config", "set flags based on target probe on attach" },
+};
+
+#define NUMFLAGS (sizeof(FLAGS)/sizeof(FLAGS[0]))
+
+static int text_to_flag(const char* s, uint32_t* flag) {
+	for (unsigned n = 0; n < NUMFLAGS; n++) {
+		if (!strcmp(FLAGS[n].name, s)) {
+			*flag = FLAGS[n].flag;
+			return 0;
+		}
+	}
+	return DBG_ERR;
+}
+
+int do_set(DC* dc, CC* cc) {
+	if (cmd_argc(cc) == 1) {
+		uint32_t set = dc_flags(dc, 0, 0);
+		for (unsigned n = 0; n < NUMFLAGS; n++) {
+			INFO("%c%-12s %s\n", set & FLAGS[n].flag ? '+' : '-',
+				FLAGS[n].name, FLAGS[n].info);
+		}
+		return 0;
+	}
+	int n = 1;
+	const char* s;
+	uint32_t clr = 0;
+	uint32_t set = 0;
+	while ((cmd_arg_str_opt(cc, n++, &s, NULL) == 0) && (s != NULL)){
+		if (s[0] == '-') {
+			if (text_to_flag(s + 1, &clr)) {
+				ERROR("unknown flag '%s'\n", s + 1);
+				return DBG_ERR;
+			}
+		} else if (s[0] == '+') {
+			if (text_to_flag(s + 1, &clr)) {
+				ERROR("unknown flag '%s'\n", s + 1);
+				return DBG_ERR;
+			}
+		} else {
+			ERROR("set requires [+-]<feature> arguments\n");
+			return DBG_ERR;
+		}
+	}
+	dc_flags(dc, clr, set);
+	return 0;
+}
+
 int do_exit(DC* dc, CC* cc) {
 	debugger_exit();
 	return 0;
@@ -292,6 +347,7 @@ struct {
 { "download",   do_download,   "write file to memory  download <file> <addr>" },
 { "upload",     do_upload,     "read memory to file   upload <file> <addr> <len>" },
 { "setclock",   do_setclock,   "set SWD clock freq    setclock <mhz>" },
+{ "set",        do_set,        "adjust features       set [+-]<feature>" },
 { "help",       do_help,       "list commands" },
 { "exit",       do_exit,       "exit debugger" },
 { "quit",       do_exit,       NULL },
@@ -300,7 +356,7 @@ struct {
 int do_help(DC* dc, CC* cc) {
 	int w = 0;
 	for (int n = 0; n < sizeof(CMDS)/sizeof(CMDS[0]); n++) {
-		int len = strlen(CMDS[0].name);
+		int len = strlen(CMDS[n].name);
 		if (len > w) w = len;
 	}
 	for (int n = 0; n < sizeof(CMDS)/sizeof(CMDS[0]); n++) {

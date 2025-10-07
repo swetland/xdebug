@@ -17,6 +17,14 @@ static flash_agent *AGENT = NULL;
 static uint32_t AGENT_sz = 0;
 static char *AGENT_arch = NULL;
 
+const char* get_arch_name(void) {
+	if (AGENT_arch) {
+		return AGENT_arch;
+	} else {
+		return "";
+	}
+}
+
 static void *load_agent(const char *arch, size_t *_sz) {
 	void *data;
 	size_t sz;

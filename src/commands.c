@@ -214,6 +214,16 @@ int do_reset(DC* dc, CC* cc) {
 	return 0;
 }
 
+void do_reset_hw(DC* dc, CC* cc) {
+	if (!strcmp(get_arch_name(), "pico")) {
+		// select all in PSM_WDSEL then trigger the WD
+		dc_mem_wr32(dc, 0x40010008, 0xFFFFFFFF);
+		dc_mem_wr32(dc, 0x40058000, 0x80000000);
+	} else {
+		ERROR("reset_hw: not supported\n");
+	}
+}
+
 static int wait_for_stop(DC* dc) {
 	unsigned m = 0;
 	uint32_t val;
@@ -251,6 +261,7 @@ int do_reset_stop(DC* dc, CC* cc) {
 		return r;
 	}
 	if ((r = dc_mem_wr32(dc, AIRCR, AIRCR_VECTKEY | AIRCR_SYSRESETREQ)) < 0) {
+		// faults on some? CM33 systems
 		return r;
 	}
 	if ((r = wait_for_stop(dc)) < 0) {

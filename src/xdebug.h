@@ -50,6 +50,7 @@ int do_download(DC* dc, CC* cc);
 int do_setarch(DC* dc, CC* cc);
 int do_flash(DC* dc, CC* cc);
 int do_erase(DC* dc, CC* cc);
+const char* get_arch_name(void);
 
 void *load_file(const char* fn, size_t *sz);
 void *get_builtin_file(const char *name, size_t *sz);

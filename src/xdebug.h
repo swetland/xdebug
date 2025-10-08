@@ -14,7 +14,7 @@ void MSG(uint32_t flags, const char* fmt, ...)
 #define mDEBUG 2
 #define mTRACE 3
 #define mERROR 4
-#define mPANIC 5 
+#define mPANIC 5
 
 #define DEBUG(fmt...) MSG(mDEBUG, fmt)
 #define INFO(fmt...) MSG(mINFO, fmt)

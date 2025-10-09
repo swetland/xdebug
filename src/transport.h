@@ -47,7 +47,7 @@ void dc_q_dp_wr(dctx_t* dc, unsigned dpaddr, uint32_t val);
 
 // queue Access Port reads and writes
 // DP.SELECT will be updated as necessary
-void dc_q_ap_rd(dctx_t* dc, unsigned apaddr, uint32_t* val); 
+void dc_q_ap_rd(dctx_t* dc, unsigned apaddr, uint32_t* val);
 void dc_q_ap_wr(dctx_t* dc, unsigned apaddr, uint32_t val);
 
 // set the max retry count for match operations
@@ -59,6 +59,11 @@ void dc_q_set_mask(dctx_t* dc, uint32_t mask);
 // try to read until (readval & mask) == val or timeout
 void dc_q_ap_match(dctx_t* dc, unsigned apaddr, uint32_t val);
 void dc_q_dp_match(dctx_t* dc, unsigned apaddr, uint32_t val);
+
+// access to the active Memory Access Port registers
+void dc_q_map_rd(dctx_t* dc, unsigned offset, uint32_t* val);
+void dc_q_map_wr(dctx_t* dc, unsigned offset, uint32_t val);
+void dc_q_map_match(dctx_t* dc, unsigned offset, uint32_t val);
 
 // prepare for a set of transactions
 void dc_q_init(dctx_t* dc);

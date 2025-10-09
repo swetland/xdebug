@@ -205,7 +205,7 @@ static int dc_decode_status(unsigned n) {
 		ERROR("DAP SWD SILENT\n");
 		return DC_ERR_SWD_SILENT;
 	default:
-		ERROR("DAP SWD BOGUS\n");
+		ERROR("DAP SWD BOGUS %x\n", ack);
 		return DC_ERR_SWD_BOGUS;
 	}
 	if (n & RSP_ValueMismatch) {
@@ -268,18 +268,6 @@ static int _dc_q_exec(DC* dc) {
 	return r;
 }
 
-// the public dc_q_exec() is called from higher layers
-int dc_q_exec(DC* dc) {
-	int r = _dc_q_exec(dc);
-	if (r == DC_ERR_SWD_FAULT) {
-		// clear all sticky errors
-		if (dc_dp_wr(dc, DP_ABORT, DP_ABORT_ALLCLR) < 0) {
-			dc_set_status(dc, DC_DETACHED);
-		}
-	}
-	return r;
-}
-
 // internal use only -- queue raw dp reads and writes
 // these do not check req for correctness
 static void dc_q_raw_rd(DC* dc, unsigned req, uint32_t* val) {
@@ -327,7 +315,7 @@ void dc_q_dp_sel(DC* dc, uint32_t dpaddr) {
 	// only register 4 cares about the value of DP.SELECT.DPBANK
 	// so do nothing unless we're setting a register 4 variant
 	if ((dpaddr & 0xF) != 0x4) {
-		return;
+		if (dc->dp_version < 3) return;
 	}
 	uint32_t mask = DP_SELECT_DPBANK(0xFU);
 	uint32_t addr = DP_SELECT_DPBANK((dpaddr >> 4));
@@ -340,17 +328,26 @@ void dc_q_dp_sel(DC* dc, uint32_t dpaddr) {
 
 // adjust DP.SELECT for desired AP access, if necessary
 void dc_q_ap_sel(DC* dc, uint32_t apaddr) {
-	// AP address is AP:8 BANK:4 REG:4
-	if (apaddr & 0xFFFF0003U) {
-		ERROR("invalid DP addr 0x%08x\n", apaddr);
-		dc->qerror = DC_ERR_FAILED;
-		return;
+	//DEBUG("APADDR %08x\n", apaddr);
+	uint32_t select;
+	if (dc->dp_version < 3) {
+		// AP address is AP:8 BANK:4 REG:4
+		if (apaddr & 0xFFFF0003U) {
+			ERROR("invalid DP addr 0x%08x\n", apaddr);
+			dc->qerror = DC_ERR_FAILED;
+			return;
+		}
+		select =
+			DP_SELECT_AP((apaddr & 0xFF00U) << 16) |
+			DP_SELECT_APBANK(apaddr >> 4);
+	} else {
+		// in v3 SELECT is just a linear address,
+		// except for bits 0-3 which are DPBANK
+		select = apaddr & 0xFFFFFFF0;
 	}
+
 	// we always return DPBANK to 0 when adjusting AP & APBANK
 	// since it preceeds an AP write which will need DPBANK at 0
-	uint32_t select =
-		DP_SELECT_AP((apaddr & 0xFF00U) << 16) |
-		DP_SELECT_APBANK(apaddr >> 4);
 	if (select != dc->dp_select_cache) {
 		dc->dp_select_cache = select;
 		dc_q_raw_wr(dc, XFER_DP | XFER_WR | DP_SELECT, select);
@@ -406,6 +403,43 @@ void dc_q_dp_match(DC* dc, unsigned apaddr, uint32_t val) {
 	dc_q_ap_sel(dc, apaddr);
 	dc_q_raw_wr(dc, XFER_DP | XFER_RD | XFER_ValueMatch | (apaddr & 0x0C), val);
 }
+
+// register access to the active memory ap
+void dc_q_map_rd(DC* dc, unsigned offset, uint32_t* val) {
+	dc_q_ap_rd(dc, dc->map_reg_base + offset, val);
+}
+
+void dc_q_map_wr(DC* dc, unsigned offset, uint32_t val) {
+	dc_q_ap_wr(dc, dc->map_reg_base + offset, val);
+}
+
+void dc_q_map_match(DC* dc, unsigned offset, uint32_t val) {
+	dc_q_ap_match(dc, dc->map_reg_base + offset, val);
+}
+
+
+// write to ABORT, which should never cause a fault
+static int _dc_wr_abort(DC* dc, uint32_t val) {
+	_dc_q_init(dc);
+	dc_q_raw_wr(dc, XFER_DP | XFER_WR | XFER_00, val);
+	return _dc_q_exec(dc);
+}
+
+// the public dc_q_exec() is called from higher layers
+int dc_q_exec(DC* dc) {
+	int r = _dc_q_exec(dc);
+	if (r == DC_ERR_SWD_FAULT) {
+		// clear all sticky errors
+		if (_dc_wr_abort(dc, DP_ABORT_ALLCLR) < 0) {
+			dc_set_status(dc, DC_DETACHED);
+			DEBUG("dc_q_exec() failed (%d)\n", r);
+		} else {
+			DEBUG("dc_q_exec() failed (%d) and cleared\n", r);
+		}
+	}
+	return r;
+}
+
 
 // convenience wrappers for single reads and writes
 int dc_dp_rd(DC* dc, unsigned dpaddr, uint32_t* val) {
@@ -484,18 +518,134 @@ static int _dc_attach(DC* dc, unsigned flags, uint32_t tgt, uint32_t* idcode) {
 	// or line reset + target select
 	_dc_q_init(dc);
 	dc_q_raw_rd(dc, XFER_DP | XFER_RD | XFER_00, idcode);
+	// Writes to ABORT will not cause a fault.  Clear any faults now.
+	dc_q_raw_wr(dc, XFER_DP | XFER_WR | XFER_00, DP_ABORT_ALLCLR);
 	int r = _dc_q_exec(dc);
+	DEBUG("attach status %d\n", r);
 	return r;
 }
 
+#define CSI_ICTRL	0xF00 // Integration Mode Control
+#define CSI_CLAIMSET	0xFA0
+#define CSI_CLAIMCLR	0xFA4
+#define CSI_DEVAFF0	0xFA8
+#define CSI_DEVAFF1	0xFAC
+#define CSI_LAR		0xFB0 // Lock Access
+#define CIS_LSR		0xFB4 // Lock Status
+#define CSI_AUTHSTATUS	0xFB8
+#define CSI_DEVARCH	0xFBC
+#define CSI_DEVARCH_ARCHITECT(n) ((n) >> 21)
+#define CSI_DEVARCH_PRESENT(n) (((n) >> 20) & 1)
+#define CSI_DEVARCH_REVISION(n) (((n) >> 16) & 0xF)
+#define CSI_DEVARCH_ARCHID(n) ((n) & 0xFFFF)
+#define CSI_DEVID2	0xFC0
+#define CSI_DEVID1	0xFC4
+#define CSI_DEVID	0xFC8 // Device ID
+#define CSI_DEVTYPE	0xFCC // Device Type
+
+// per ADIv6, CoreSight ROM Table has:
+// CIDR1.CLASS = 0x9
+// DEVARCH.ARCHID = 0x0AF7
+// DEVARCH.REVISION = 0
+// DEVARCH.PRESENT = 1
+// DEVARCH.ARCHITECT = 0x23B (ARM)
+
+// DEVTYPE = 0 (misc/other)
+
+// DEVID.CP (6)  1 == COM Port at D00-D7C
+// DEVID.PRR (5) 1 == Power Request Functionality Included
+// DEVID.SYSMEM (4) 0 == Debug Only, 1 = System Memory Present  (deprecated)
+// DEVID.FORMAT (3:0) 0 == 32bit, 1 == 64bit, >1 == reserved
+
+// 0000 00 af7 misc/other ROM
+// 2000 00 a17 misc/other MAPv2
+// 4000 00 a17 misc/other MAPv2
+// 6000
+// 7000 12 000 trace link funnel
+// 8000 11 000 trace sink port
+// 9000 14 a14 trace sink rsvd
+// a000 00 a17 misc/other MAPv2
+
+int dump_rom_table(DC* dc, uint32_t base, int rt) {
+	uint32_t cidr[4];
+	uint32_t pidr[8];
+	uint32_t memtype, devtype, devarch;
+	_dc_q_init(dc);
+	dc_q_ap_rd(dc, 0xFF0, cidr + 0);
+	dc_q_ap_rd(dc, 0xFF4, cidr + 1);
+	dc_q_ap_rd(dc, 0xFF8, cidr + 2);
+	dc_q_ap_rd(dc, 0xFFC, cidr + 3);
+	dc_q_ap_rd(dc, 0xFE0, pidr + 0);
+	dc_q_ap_rd(dc, 0xFE4, pidr + 1);
+	dc_q_ap_rd(dc, 0xFE8, pidr + 2);
+	dc_q_ap_rd(dc, 0xFEC, pidr + 3);
+	dc_q_ap_rd(dc, 0xFD0, pidr + 4);
+	dc_q_ap_rd(dc, 0xFD4, pidr + 5);
+	dc_q_ap_rd(dc, 0xFD8, pidr + 6);
+	dc_q_ap_rd(dc, 0xFDC, pidr + 7);
+	dc_q_ap_rd(dc, 0xFCC, &memtype);
+	dc_q_ap_rd(dc, CSI_DEVTYPE, &devtype);
+	dc_q_ap_rd(dc, CSI_DEVARCH, &devarch);
+	int r = dc_q_exec(dc);
+
+	if (r == 0) {
+		if ((cidr[3] != 0xB1) || (cidr[2] != 0x05) ||
+			(cidr[1] & 0xFFFFFF0F) || (cidr[0] != 0x0D)) {
+			DEBUG("%08x: CIDR %02x %02x %02x %02x ???\n", base,
+				cidr[0], cidr[1], cidr[2], cidr[3]);
+		} else {
+			DEBUG("%08x: CIDR %02x\n", base, cidr[1]);
+			if (cidr[1] == 0x90) {
+				DEBUG("%08x: DEVTYPE %08x DEVARCH %08x\n",
+					base, devtype, devarch);
+			}
+		}
+		DEBUG("%08x: PIDR %02x %02x %02x %02x %02x %02x %02x %02x\n", base,
+			pidr[0], pidr[1], pidr[2], pidr[3],
+			pidr[4], pidr[5], pidr[6], pidr[7]);
+		DEBUG("%08x: MEMTYPE %08x\n", base, memtype);
+
+		if (rt) {
+		for (unsigned a = 0; a < 32;a += 4 ) {
+			unsigned v = 0xeeeeeeee;
+			if ((dc_ap_rd(dc, a, &v) < 0) || (v == 0)) break;
+			dump_rom_table(dc, v & 0xFFFFF000, 0);
+		}
+		}
+	}
+	return r;
+}
+
+// TARGETID -> JEP106 ContCode + IdentCode + Present
+//    8      10
+// CCCCIIIIIIIP
+// ARM = 0x4,0x3B: 0x23B
+// rPI = 0x9,0x27: 0x493  PN 0x01002=RP2040, 0x00040=RP2350
+
 int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
-	uint32_t n;
+	uint32_t n, nn;
+
+	dc->dp_version = 0;
+	dc->map_reg_base = 0;
 
 	_dc_attach(dc, 0, 0, &n);
-	INFO("attach: IDCODE %08x\n", n);
+
+	dc->dp_version = (n >> 12) & 7;
+
+	if (dc->dp_version == 3) {
+		// todo: query ROM table
+		dc->map_reg_base = 0x2D00;
+	}
+
+	INFO("attach: IDCODE %08x v%d\n", n, dc->dp_version);
 	if (idcode != NULL) {
 		*idcode = n;
 	}
+
+	dc_dp_rd(dc, DP_TARGETID, &nn);
+	INFO("attach: TARGETID %08x\n", nn);
+
+	//_dc_attach(dc, DC_MULTIDROP, 0x01002927, &nn);
 
 	// If this is a RP2040, we need to connect in multidrop
 	// mode before doing anything else.
@@ -505,11 +655,11 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 			_dc_attach(dc, DC_MULTIDROP, 0x01002927, &n);
 		}
 	}
-	
-	_dc_q_init(dc);
-	dc_q_dp_rd(dc, DP_CS, &n);
-	dc_q_exec(dc);
-	DEBUG("attach: CTRL/STAT   %08x\n", n);
+
+	//_dc_q_init(dc);
+	//dc_q_dp_rd(dc, DP_CS, &n);
+	//dc_q_exec(dc);
+	//DEBUG("attach: CTRL/STAT   %08x\n", n);
 
 	// clear all sticky errors
 	_dc_q_init(dc);
@@ -522,18 +672,27 @@ int dc_attach(DC* dc, unsigned flags, unsigned tgt, uint32_t* idcode) {
 	dc_q_dp_wr(dc, DP_CS, DP_CS_CDBGPWRUPREQ | DP_CS_CSYSPWRUPREQ);
 	dc_q_dp_match(dc, DP_CS, DP_CS_CDBGPWRUPACK | DP_CS_CSYSPWRUPACK);
 	dc_q_dp_rd(dc, DP_CS, &n);
-	dc_q_ap_rd(dc, MAP_CSW, &dc->map_csw_keep);
+	if (dc->dp_version >= 3) {
+		dc_q_dp_wr(dc, DP_SELECT1, 0);
+	}
+	dc_q_ap_rd(dc, dc->map_reg_base + MAP_CSW, &dc->map_csw_keep);
 	dc_q_exec(dc);
 	DEBUG("attach: CTRL/STAT   %08x\n", n);
 	DEBUG("attach: MAP.CSW     %08x\n", dc->map_csw_keep);
 
 	//preserving existing settings is insufficient
 	//dc->map_csw_keep &= MAP_CSW_KEEP;
-
-	dc->map_csw_keep = AHB_CSW_PROT_PRIV | AHB_CSW_MASTER_DEBUG;
+	//dc->map_csw_keep &= (~0x40000000);
+	//dc->map_csw_keep = AHB_CSW_PROT_PRIV | AHB_CSW_MASTER_DEBUG;
+	//dc->map_csw_keep = AHB_CSW_MASTER_DEBUG | (1U << 23);
 
 	dc_set_status(dc, DC_ATTACHED);
 
+#if 0
+	if (dc->dp_version >= 3) {
+		dump_rom_table(dc, 0, 1);
+	}
+#endif
 	if (dc->flags & DCF_AUTO_CONFIG) {
 		// ...
 	}
@@ -677,7 +836,7 @@ int dc_create(DC** out, void (*cb)(void *cookie, uint32_t status), void *cookie)
 	}
 	dc->status_callback = cb;
 	dc->status_cookie = cookie;
-	dc->flags = DCF_POLL | DCF_AUTO_ATTACH;
+	dc->flags = DCF_POLL; // | DCF_AUTO_ATTACH;
 	*out = dc;
 	dc_set_status(dc, DC_OFFLINE);
 	dc_connect(dc);

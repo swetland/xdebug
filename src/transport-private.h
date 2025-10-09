@@ -28,10 +28,16 @@ struct debug_context {
 	uint32_t cfg_match;
 	uint32_t cfg_mask;
 
+	// target state
+	uint32_t dp_version;
+
 	// configured DP.SELECT register value
 	uint32_t dp_select;
 	// last known state of DP.SELECT on the target
 	uint32_t dp_select_cache;
+
+	// active MAP context
+	uint32_t map_reg_base;
 
 	// MAP cached state
 	uint32_t map_csw_keep;

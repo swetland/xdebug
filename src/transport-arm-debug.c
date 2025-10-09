@@ -10,14 +10,14 @@
 static void dc_q_map_csw_wr(DC* dc, uint32_t val) {
 	if (val != dc->map_csw_cache) {
 		dc->map_csw_cache = val;
-		dc_q_ap_wr(dc, MAP_CSW, val | dc->map_csw_keep);
+		dc_q_map_wr(dc, MAP_CSW, val | dc->map_csw_keep);
 	}
 }
 
 static void dc_q_map_tar_wr(DC* dc, uint32_t val) {
 	if (val != dc->map_tar_cache) {
 		dc->map_tar_cache = val;
-		dc_q_ap_wr(dc, MAP_TAR, val);
+		dc_q_map_wr(dc, MAP_TAR, val);
 	}
 }
 
@@ -28,7 +28,7 @@ void dc_q_mem_rd32(DC* dc, uint32_t addr, uint32_t* val) {
 	} else {
 		dc_q_map_csw_wr(dc, MAP_CSW_SZ_32 | MAP_CSW_INC_OFF | MAP_CSW_DEVICE_EN);
 		dc_q_map_tar_wr(dc, addr);
-		dc_q_ap_rd(dc, MAP_DRW, val);
+		dc_q_map_rd(dc, MAP_DRW, val);
 	}
 }
 
@@ -38,7 +38,7 @@ void dc_q_mem_match32(DC* dc, uint32_t addr, uint32_t val) {
 	} else {
 		dc_q_map_csw_wr(dc, MAP_CSW_SZ_32 | MAP_CSW_INC_OFF | MAP_CSW_DEVICE_EN);
 		dc_q_map_tar_wr(dc, addr);
-		dc_q_ap_match(dc, MAP_DRW, val);
+		dc_q_map_match(dc, MAP_DRW, val);
 	}
 }
 
@@ -48,7 +48,7 @@ void dc_q_mem_wr32(DC* dc, uint32_t addr, uint32_t val) {
 	} else {
 		dc_q_map_csw_wr(dc, MAP_CSW_SZ_32 | MAP_CSW_INC_OFF | MAP_CSW_DEVICE_EN);
 		dc_q_map_tar_wr(dc, addr);
-		dc_q_ap_wr(dc, MAP_DRW, val);
+		dc_q_map_wr(dc, MAP_DRW, val);
 	}
 }
 
@@ -104,7 +104,7 @@ int dc_mem_rd_words(dctx_t* dc, uint32_t addr, uint32_t num, uint32_t* ptr) {
 		num -= xfer;
 		addr += xfer * 4;
 		while (xfer > 0) {
-			dc_q_ap_rd(dc, MAP_DRW, ptr++);
+			dc_q_map_rd(dc, MAP_DRW, ptr++);
 			xfer--;
 		}
 		int r = dc_q_exec(dc);
@@ -127,7 +127,7 @@ int dc_mem_wr_words(dctx_t* dc, uint32_t addr, uint32_t num, const uint32_t* ptr
 		num -= xfer;
 		addr += xfer * 4;
 		while (xfer > 0) {
-			dc_q_ap_wr(dc, MAP_DRW, *ptr++);
+			dc_q_map_wr(dc, MAP_DRW, *ptr++);
 			xfer--;
 		}
 		int r = dc_q_exec(dc);
